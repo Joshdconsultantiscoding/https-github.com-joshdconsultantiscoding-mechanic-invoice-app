@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>MechFlow - Professional Mechanic Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@100;300;400;700;900&family=Plus+Jakarta+Sans:wght@200;400;600;800&display=swap"
+        rel="stylesheet">
+    <!-- Material Symbols -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet">
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#007AFF",
+                        "whatsapp": "#25D366",
+                        "background-light": "#050505",
+                        "background-dark": "#000000",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"],
+                        "heading": ["Outfit", "sans-serif"]
+                    },
+                    borderRadius: { "DEFAULT": "4px", "lg": "8px", "xl": "12px", "2xl": "16px", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <style>
+        :root {
+            --accent: #007AFF;
+            --accent-glow: rgba(0, 122, 255, 0.4);
+            --bg-pure: #000000;
+            --bg-elevated: #050505;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.6);
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-pure);
+            color: var(--text-primary);
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* --- Noise Overlay --- */
+        .noise {
+            position: fixed;
+            inset: 0;
+            background: url("https://grainy-gradients.vercel.app/noise.svg");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        .fill-1 {
+            font-variation-settings: 'FILL' 1;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #000;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent);
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-slide-up {
+            animation: slideUp 0.6s ease-out forwards;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark font-display text-[#111418] dark:text-white transition-colors duration-200">
+    <div id="root"></div>
+
+    <!-- React and Dependencies -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/history@5/umd/history.development.js"></script>
+    <script src="https://unpkg.com/react-router@6.3.0/umd/react-router.development.js"></script>
+    <script src="https://unpkg.com/react-router-dom@6.3.0/umd/react-router-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="store.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { createRoot } = ReactDOM;
+        const { MemoryRouter, Routes, Route, Link, useNavigate, useLocation, useParams } = ReactRouterDOM;
+
+        // Data & State Management logic imported from store.js
+        const Store = window.Store;
+
+        // --- Components ---
+
+        const PageLoader = () => (
+            <div className="fixed inset-0 bg-[#000000] z-[9999] flex flex-col items-center justify-center">
+                <div className="relative flex flex-col items-center gap-6">
+                    <div style={{ fontFamily: 'Outfit', fontWeight: 900, fontSize: '1.5rem', letterSpacing: '0.2em', color: 'white' }}>
+                        MECHFLOW
+                    </div>
+                    <div className="w-48 h-[1px] bg-white/10 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-blue-500 w-1/2 animate-[sidebarLoader_1s_infinite_linear]"></div>
+                    </div>
+                    <div className="text-[10px] text-white/40 font-bold tracking-[0.3em] uppercase">Initializing Interface</div>
+                </div>
+                <style>{`
+                    @keyframes sidebarLoader {
+                        0% { transform: translateX(-100%); }
+                        100% { transform: translateX(200%); }
+                    }
+                `}</style>
+            </div>
+        );
+
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                console.error("ErrorBoundary caught an error", error, errorInfo);
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="flex items-center justify-center min-h-screen bg-gray-100 text-[#111418] p-4 font-sans">
+                            <div className="bg-white p-8 rounded-xl shadow-xl max-w-md w-full border border-gray-200 text-center">
+                                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 mb-6">
+                                    <span className="material-symbols-outlined text-3xl text-red-600">error</span>
+                                </div>
+                                <h1 className="text-xl font-bold text-gray-900 mb-2">Something went wrong</h1>
+                                <p className="text-gray-500 mb-6 text-sm">We realized there was an error. Please try reloading the page to continue.</p>
+                                <button
+                                    onClick={() => window.location.reload()}
+                                    className="w-full bg-primary text-white px-4 py-3 rounded-lg font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                                >
+                                    <span className="material-symbols-outlined text-sm">refresh</span>
+                                    Reload Application
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return this.props.children;
+            }
+        }
+
+        const Layout = ({ children, hideNav = false, hideHeader = false }) => {
+            const location = useLocation();
+            const navigate = useNavigate();
+            const activePath = location.pathname;
+            const [sidebarOpen, setSidebarOpen] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const user = Store.getCurrentUser();
+
+            useEffect(() => {
+                setLoading(true);
+                const timer = setTimeout(() => setLoading(false), 800);
+                return () => clearTimeout(timer);
+            }, [location.pathname]);
+
+            const showBack = activePath !== '/customer-dashboard' && activePath !== '/';
+
+            const NavLink = ({ to, icon, label, fillActive }) => {
+                const isActive = activePath === to;
+                const baseClass = "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors duration-200 group font-medium text-sm";
+                const activeClass = "bg-[#f0f2f4] dark:bg-gray-800 text-[#111418] dark:text-white";
+                const inactiveClass = "text-[#617589] dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-[#111418] dark:hover:text-white";
+
+                return (
+                    <Link to={to} className={`${baseClass} ${isActive ? activeClass : inactiveClass}`} onClick={() => setSidebarOpen(false)}>
+                        <span className={`material-symbols-outlined ${fillActive && isActive ? 'fill-1' : ''}`} style={{ fontSize: '20px' }}>{icon}</span>
+                        <span className="font-semibold">{label}</span>
+                    </Link>
+                );
+            };
+
+            const links = (
+                <React.Fragment>
+                    <NavLink to="/customer-dashboard" icon="dashboard" label="Home" fillActive />
+                    <NavLink to="/request" icon="add_circle" label="New Request" />
+                    {/* Add more customer links if needed */}
+                </React.Fragment>
+            );
+
+            return (
+                <div className="flex min-h-screen bg-background-light dark:bg-background-dark">
+                    {loading && <PageLoader />}
+                    {/* Desktop Sidebar */}
+                    {!hideNav && (
+                        <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 no-print">
+                            <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+                                <Link to="/customer-dashboard" className="flex items-center gap-3 text-primary hover:opacity-80 transition-opacity">
+                                    <span className="material-symbols-outlined text-3xl">local_taxi</span>
+                                    <span className="text-xl font-bold tracking-tight text-[#111418] dark:text-white">MechFlow</span>
+                                </Link>
+                            </div>
+                            <nav className="flex-1 p-4 space-y-2">
+                                {links}
+                            </nav>
+                            <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+                                <button onClick={() => { Store.logout(); navigate('/login'); }} className="flex items-center gap-3 px-3 py-2 w-full text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors font-medium text-sm">
+                                    <span className="material-symbols-outlined text-xl">logout</span>
+                                    <span>Sign Out</span>
+                                </button>
+                            </div>
+                        </aside>
+                    )}
+
+                    {/* Mobile Sidebar Overlay */}
+                    {!hideNav && sidebarOpen && (
+                        <div className="lg:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={() => setSidebarOpen(false)}>
+                            <aside className="w-64 h-full bg-white dark:bg-gray-900 p-4 shadow-2xl animate-[slideRight_0.3s_ease-out]" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-8">
+                                    <span className="text-xl font-bold">Menu</span>
+                                    <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800">
+                                        <span className="material-symbols-outlined">close</span>
+                                    </button>
+                                </div>
+                                <nav className="space-y-2">
+                                    {links}
+                                </nav>
+                            </aside>
+                        </div>
+                    )}
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+                        {!hideHeader && (
+                            <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex items-center px-4 lg:px-8 justify-between sticky top-0 z-30 no-print">
+                                <div className="flex items-center gap-4">
+                                    {showBack && (
+                                        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors">
+                                            <span className="material-symbols-outlined">arrow_back</span>
+                                        </button>
+                                    )}
+                                    <h1 className="font-bold text-lg text-gray-900 dark:text-white">
+                                        {activePath === '/customer-dashboard' ? 'My Dashboard' : 'Request Service'}
+                                    </h1>
+                                </div>
+                                <div className="size-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
+                                    {user.name.charAt(0)}
+                                </div>
+                            </header>
+                        )}
+
+                        <div className="flex-1 overflow-y-auto pb-24">
+                            {children}
+                        </div>
+
+                        {!hideNav && (
+                            <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 px-6 py-3 flex justify-between items-center z-40 pb-safe">
+                                <Link to="/customer-dashboard" className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors ${activePath === '/customer-dashboard' ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <span className={`material-symbols-outlined ${activePath === '/customer-dashboard' ? 'fill-1' : ''}`}>dashboard</span>
+                                    <span className="text-[10px] font-bold">Home</span>
+                                </Link>
+                                <Link to="/request" className="flex flex-col items-center gap-1 -mt-8">
+                                    <div className="size-14 bg-blue-600 text-white rounded-full shadow-xl shadow-blue-600/30 flex items-center justify-center transform active:scale-95 transition-transform">
+                                        <span className="material-symbols-outlined text-2xl">add</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-blue-600 mt-1">New</span>
+                                </Link>
+                                <button onClick={() => { Store.logout(); navigate('/login'); }} className="flex flex-col items-center gap-1 p-2 rounded-lg transition-colors text-gray-400 hover:text-red-500">
+                                    <span className="material-symbols-outlined">logout</span>
+                                    <span className="text-[10px] font-bold">Exit</span>
+                                </button>
+                            </nav>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const StatusBadge = ({ status }) => {
+            const config = {
+                pending: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-l-4 border-l-amber-500",
+                approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-l-4 border-l-emerald-500",
+                sent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-l-4 border-l-blue-500",
+                archived: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border-l-4 border-l-gray-500 line-through opacity-70",
+                deleted: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-l-4 border-l-red-500"
+            };
+            const label = { pending: "Pending", approved: "Approved", sent: "Sent", archived: "Archived", deleted: "Deleted" };
+            return (
+                <span className={`${config[status] || config.pending} text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider`}>
+                    {label[status] || status}
+                </span>
+            );
+        };
+
+        const HomePage = () => {
+            const navigate = useNavigate();
+
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 p-6 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5"></div>
+
+                    <div className="relative z-10 text-center text-white mb-16 animate-[fadeIn_0.5s_ease-out]">
+                        <div className="size-28 bg-white/20 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto mb-8 border-2 border-white/30 shadow-2xl">
+                            <span className="material-symbols-outlined text-6xl">car_repair</span>
+                        </div>
+                        <h1 className="text-6xl font-black mb-4 tracking-tight">MechFlow</h1>
+                        <p className="text-blue-100 text-xl font-medium">Professional Auto Repair Services</p>
+                        <p className="text-blue-200/60 text-sm mt-2">Fast. Transparent. Reliable.</p>
+                    </div>
+
+                    <div className="relative z-10 flex flex-col sm:flex-row gap-4 w-full max-w-2xl px-4 animate-[fadeIn_0.6s_ease-out]">
+                        <button
+                            onClick={() => navigate('/request')}
+                            className="flex-1 bg-white text-blue-700 py-6 px-8 rounded-2xl font-bold text-lg shadow-2xl hover:shadow-3xl hover:scale-105 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 group"
+                        >
+                            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">add_circle</span>
+                            New Request
+                        </button>
+                        <button
+                            onClick={() => navigate('/track')}
+                            className="flex-1 bg-white/10 backdrop-blur-md text-white py-6 px-8 rounded-2xl font-bold text-lg border-2 border-white/30 hover:bg-white/20 hover:border-white/50 transition-all flex items-center justify-center gap-3 group"
+                        >
+                            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">search</span>
+                            Track Status
+                        </button>
+                    </div>
+
+                    <a href="standalone.html" className="relative z-10 mt-16 text-white/50 text-sm hover:text-white transition-colors flex items-center gap-1">
+                        Mechanic Portal <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    </a>
+                </div>
+            );
+        };
+
+        const TrackScreen = () => {
+            const navigate = useNavigate();
+            const [email, setEmail] = useState('');
+            const [phone, setPhone] = useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const user = Store.loginByPhoneEmail(email.trim(), phone.trim());
+                if (user) {
+                    navigate('/dashboard');
+                } else {
+                    alert("No requests found matching this email and phone number. Please check your details.");
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-6">
+                    <div className="w-full max-w-md">
+                        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 flex items-center gap-1 mb-8 font-medium transition-colors">
+                            <span className="material-symbols-outlined">arrow_back</span> Back to Home
+                        </button>
+
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700 animate-[fadeIn_0.3s_ease-out]">
+                            <div className="text-center mb-8">
+                                <div className="size-20 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                    <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-4xl">search</span>
+                                </div>
+                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Track Your Requests</h2>
+                                <p className="text-gray-500 dark:text-gray-400">Enter your contact information to view all your repair requests</p>
+                            </div>
+
+                            <form onSubmit={handleSubmit} className="space-y-5">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Address</label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full h-14 px-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-base"
+                                        placeholder="john@example.com"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Phone Number</label>
+                                    <input
+                                        type="tel"
+                                        value={phone}
+                                        onChange={(e) => setPhone(e.target.value)}
+                                        className="w-full h-14 px-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-base"
+                                        placeholder="(555) 123-4567"
+                                        required
+                                    />
+                                </div>
+                                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all text-lg mt-6">
+                                    View My Requests
+                                </button>
+                                <p className="text-center text-xs text-gray-400 mt-4">
+                                    Use the same email and phone you provided when submitting your request.
+                                </p>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const LoginScreen = () => {
+            const navigate = useNavigate();
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loadingExternal, setLoadingExternal] = useState(false);
+            const [currentImg, setCurrentImg] = useState(0);
+
+            const images = [
+                'assets/images/slider1.png',
+                'assets/images/slider2.png',
+                'assets/images/slider3.png'
+            ];
+
+            useEffect(() => {
+                const timer = setInterval(() => {
+                    setCurrentImg((prev) => (prev + 1) % images.length);
+                }, 5000);
+                return () => clearInterval(timer);
+            }, []);
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                const user = Store.login(email.trim(), password.trim());
+                if (user) {
+                    navigate('/customer-dashboard');
+                } else {
+                    alert("Invalid email or password. Please try again.");
+                }
+            };
+
+            const handleMechanicPortal = () => {
+                window.location.href = 'standalone.html';
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col lg:flex-row text-gray-900 bg-white dark:bg-gray-900">
+                    {loadingExternal && <PageLoader />}
+
+                    {/* Mechanic Link (Absolute to screen) */}
+                    <div className="absolute top-4 right-4 z-50">
+                        <button onClick={handleMechanicPortal} className="text-xs font-bold text-white/70 hover:text-white bg-black/30 hover:bg-black/50 px-4 py-2 rounded-full transition-all backdrop-blur-md border border-white/10 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm">construction</span>
+                            Mechanic Portal
+                        </button>
+                    </div>
+
+                    {/* Left: New Request (Primary Hero) */}
+                    <div className="w-full lg:w-1/2 min-h-[60vh] lg:min-h-screen relative flex flex-col items-center justify-center p-8 lg:p-12 text-center overflow-hidden bg-black lg:rounded-tr-[3rem] lg:rounded-br-[3rem]">
+                        {/* Video Background */}
+                        <div className="absolute inset-0 z-0">
+                            <video
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                className="w-full h-full object-cover opacity-80 scale-[1.35]"
+                            >
+                                <source src="assets/motion/customer_loop.webm" type="video/webm" />
+                            </video>
+                            {/* Dark Fade Overlay - Lightened */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10"></div>
+                            <div className="absolute inset-0 bg-black/10 z-10"></div>
+                        </div>
+
+                        <div className="relative z-20 max-w-lg animate-slide-up">
+                            <div className="size-20 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-8 border border-white/20 shadow-2xl">
+                                <span className="material-symbols-outlined text-4xl text-white">confirmation_number</span>
+                            </div>
+
+                            <h1 className="text-5xl lg:text-6xl font-black text-white mb-6 tracking-tight leading-tight">
+                                Precision <br />
+                                <span className="text-white/40">Automotive Care.</span>
+                            </h1>
+
+                            <p className="text-gray-300 text-lg mb-10 leading-relaxed font-medium max-w-md mx-auto">
+                                Experience seamless maintenance management with real-time tracking and expert diagnostics.
+                            </p>
+
+                            <button onClick={() => navigate('/request')} className="group w-full sm:w-auto bg-white text-black font-bold text-lg px-10 py-4 rounded-xl shadow-[0_0_40px_rgba(255,255,255,0.1)] hover:shadow-[0_0_60px_rgba(255,255,255,0.2)] hover:scale-[1.02] transition-all flex items-center justify-center gap-3">
+                                Initialize Request
+                                <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                            </button>
+
+                            <div className="mt-8 flex items-center justify-center gap-6 text-white/30 font-bold text-xs uppercase tracking-widest">
+                                <span className="flex items-center gap-2"><span className="w-1 h-1 bg-white rounded-full"></span> Instant Booking</span>
+                                <span className="flex items-center gap-2"><span className="w-1 h-1 bg-white rounded-full"></span> Live Telemetry</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right: Login (Secondary) */}
+                    <div className="w-full lg:w-1/2 bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center p-6 lg:p-12 relative">
+                        <div className="w-full max-w-md animate-slide-up" style={{ animationDelay: '0.2s' }}>
+                            <div className="text-center mb-10">
+                                <div className="inline-block p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mb-4 text-xs font-bold uppercase tracking-widest">
+                                    Secure Portal
+                                </div>
+                                <h2 className="text-3xl font-black dark:text-white">Customer Login</h2>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm mt-2">Access your repair history and invoices.</p>
+                            </div>
+
+                            <div className="bg-white dark:bg-gray-800 p-8 lg:p-10 rounded-[2.5rem] shadow-xl shadow-gray-200 dark:shadow-none border border-gray-100 dark:border-gray-700">
+                                <form onSubmit={handleLogin} className="space-y-6">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-black uppercase text-gray-400 tracking-widest pl-1">Email Address</label>
+                                        <div className="relative">
+                                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">mail</span>
+                                            <input
+                                                value={email}
+                                                onChange={e => setEmail(e.target.value)}
+                                                type="email"
+                                                placeholder="john@example.com"
+                                                required
+                                                className="w-full h-14 pl-12 pr-4 rounded-2xl bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:text-white font-bold transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-black uppercase text-gray-400 tracking-widest pl-1">Password</label>
+                                        <div className="relative">
+                                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">lock</span>
+                                            <input
+                                                value={password}
+                                                onChange={e => setPassword(e.target.value)}
+                                                type="password"
+                                                placeholder="••••••••"
+                                                required
+                                                className="w-full h-14 pl-12 pr-4 rounded-2xl bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:text-white font-bold transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-gray-900 dark:bg-blue-600 text-white font-black h-16 rounded-2xl hover:opacity-95 transition-all shadow-xl shadow-gray-300 dark:shadow-blue-900/20 flex items-center justify-center gap-3 active:scale-[0.98]">
+                                        Secure Login
+                                        <span className="material-symbols-outlined">login</span>
+                                    </button>
+                                </form>
+                                <div className="mt-8 pt-8 border-t border-gray-50 dark:border-gray-700 text-center">
+                                    <p className="text-xs text-gray-400 font-medium">
+                                        New Customer? <Link to="/register" className="text-blue-500 hover:text-blue-400 font-bold ml-1">Create Account</Link>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer Info */}
+                        <div className="mt-12 lg:absolute lg:bottom-8 text-center text-gray-400 text-[10px] font-black uppercase tracking-[0.2em] opacity-50">
+                            &copy; {new Date().getFullYear()} MechFlow PRO.
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        const RegisterScreen = () => {
+            const navigate = useNavigate();
+            const [formData, setFormData] = useState({ name: '', email: '', password: '', phone: '' });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                try {
+                    // Register user
+                    Store.register(
+                        formData.name.trim(),
+                        formData.email.trim(),
+                        formData.password.trim(),
+                        formData.phone.trim()
+                    );
+
+                    // Auto-login logic
+                    const user = Store.login(formData.email.trim(), formData.password.trim());
+                    if (user) {
+                        navigate('/customer-dashboard');
+                    } else {
+                        // Fallback if login fails for some reason
+                        navigate('/');
+                    }
+                } catch (err) {
+                    alert(err.message);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex text-gray-900 bg-white dark:bg-gray-900">
+                    {/* Left Side - Image */}
+                    <div className="hidden lg:flex lg:w-1/2 relative bg-gray-900 overflow-hidden">
+                        <div className="absolute inset-0 bg-blue-600/20 z-10 mix-blend-multiply"></div>
+                        <img
+                            src="https://images.unsplash.com/photo-1485291571150-772bcfc10da5?q=80&w=2728&auto=format&fit=crop"
+                            className="absolute inset-0 w-full h-full object-cover opacity-80"
+                            alt="Car interior"
+                        />
+                        <div className="relative z-20 p-12 flex flex-col justify-between h-full text-white">
+                            <div>
+                                <button onClick={() => navigate('/')} className="flex items-center gap-2 text-white hover:text-blue-200 transition-colors group">
+                                    <span className="material-symbols-outlined group-hover:-translate-x-1 transition-transform">arrow_back</span>
+                                    <span className="font-medium">Back to Login</span>
+                                </button>
+                                <h2 className="text-4xl font-bold mt-12 max-w-md leading-tight">Join the Family.</h2>
+                                <p className="mt-4 text-gray-300 max-w-sm text-lg">Create an account to manage your vehicle services effortlessly.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Side - Form */}
+                    <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12 relative">
+                        <div className="absolute top-6 left-6 lg:hidden">
+                            <button onClick={() => navigate('/')} className="p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors">
+                                <span className="material-symbols-outlined">arrow_back</span>
+                            </button>
+                        </div>
+
+                        <div className="w-full max-w-md space-y-8">
+                            <div className="text-center lg:text-left">
+                                <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Create Account</h2>
+                                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Join MechFlow for simpler car care</p>
+                            </div>
+
+                            <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                            placeholder="John Doe"
+                                            value={formData.name}
+                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email address</label>
+                                        <input
+                                            type="email"
+                                            required
+                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                            placeholder="john@example.com"
+                                            value={formData.email}
+                                            onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone Number</label>
+                                        <input
+                                            type="tel"
+                                            required
+                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                            placeholder="(555) 000-0000"
+                                            value={formData.phone}
+                                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                                        <input
+                                            type="password"
+                                            required
+                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                            placeholder="••••••••"
+                                            value={formData.password}
+                                            onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-lg shadow-blue-600/30 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all transform hover:scale-[1.02] active:scale-[0.98] mt-6"
+                                >
+                                    Sign Up
+                                </button>
+                            </form>
+                            <div className="text-center mt-6">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    Already have an account?{' '}
+                                    <Link to="/" className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
+                                        Login
+                                    </Link>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+
+        const CustomerDashboardScreen = () => {
+            const navigate = useNavigate();
+            const [estimates, setEstimates] = useState([]);
+            const user = Store.getCurrentUser();
+
+            useEffect(() => {
+                if (user) {
+                    setEstimates(Store.getCustomerEstimates(user.phone, user.email, user.shareKey));
+                }
+            }, []);
+
+            return (
+                <Layout hideHeader>
+                    <div className="min-h-screen pb-20">
+                        {/* Hero Header */}
+                        <div className="bg-blue-600 dark:bg-blue-800 text-white pt-10 pb-20 px-6 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                            <div className="max-w-xl mx-auto relative z-10">
+                                <div className="flex justify-between items-center mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="size-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
+                                            <span className="material-symbols-outlined text-2xl">person</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-blue-100 text-sm font-medium">Welcome back,</p>
+                                            <h1 className="text-2xl font-bold">{user && user.name ? user.name : 'Customer'}</h1>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => { Store.logout(); navigate('/login'); }} className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors">
+                                        <span className="material-symbols-outlined">logout</span>
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md rounded-2xl p-6 border border-white/20 flex flex-col justify-between h-40">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="text-blue-100 mb-1 text-sm font-medium">Active Requests</p>
+                                                <h2 className="text-4xl font-black text-white">{estimates.filter(e => e.status !== 'sent').length}</h2>
+                                            </div>
+                                            <div className="size-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                                <span className="material-symbols-outlined text-white">build</span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => navigate('/request')} className="w-full bg-white text-blue-600 px-4 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
+                                            <span className="material-symbols-outlined text-lg">add_circle</span> New Request
+                                        </button>
+                                    </div>
+
+                                    <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md rounded-2xl p-6 border border-white/20 flex flex-col justify-between h-40 relative group">
+                                        <div>
+                                            <p className="text-blue-100 mb-1 text-sm font-medium">Your Shop Key</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <h2 className="text-3xl font-black tracking-wider font-mono text-white">{user.shareKey || '---'}</h2>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(user.shareKey);
+                                                        alert('Key copied!');
+                                                    }}
+                                                    className="size-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                                                    title="Copy Key"
+                                                >
+                                                    <span className="material-symbols-outlined text-sm">content_copy</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-blue-200/80 text-xs bg-white/5 p-2 rounded-lg border border-white/10">
+                                            <span className="material-symbols-outlined text-base">info</span>
+                                            <span className="leading-tight">Give this Code to your mechanic to link repairs.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="max-w-xl mx-auto px-6 -mt-10 relative z-20">
+                            <h3 className="text-lg font-bold mb-4 px-2 dark:text-white">Your History</h3>
+                            <div className="flex flex-col gap-4">
+                                {estimates.length === 0 ? (
+                                    <div className="bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-sm text-center">
+                                        <div className="size-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <span className="material-symbols-outlined text-gray-400 text-3xl">folder_off</span>
+                                        </div>
+                                        <p className="text-gray-500 font-medium">No service history yet.</p>
+                                    </div>
+                                ) : (
+                                    estimates.map(est => (
+                                        <div key={est.id} onClick={() => navigate(`/status/${est.id}`)} className="group bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all">
+                                            <div className="flex gap-4">
+                                                <div className="w-20 h-20 rounded-xl bg-cover bg-center shrink-0 shadow-inner" style={{ backgroundImage: `url(${est.img})` }}></div>
+                                                <div className="flex-1 flex flex-col justify-between py-1">
+                                                    <div>
+                                                        <div className="flex justify-between items-start">
+                                                            <h4 className="font-bold text-gray-900 dark:text-white line-clamp-1">{est.service}</h4>
+                                                            <StatusBadge status={est.status} />
+                                                        </div>
+                                                        <p className="text-gray-500 text-xs mt-1">{est.vehicle}</p>
+                                                    </div>
+                                                    <div className="flex justify-between items-end">
+                                                        <span className="text-xs text-gray-400 font-medium">{est.date}</span>
+                                                        <div className="flex items-center gap-1 text-blue-600 text-xs font-bold group-hover:underline">
+                                                            View Details <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </Layout>
+            );
+        };
+
+
+
+
+        const OfflineErrorScreen = () => {
+            const navigate = useNavigate();
+            return (
+                <Layout hideNav>
+                    <main className="flex-grow flex items-center justify-center p-6 min-h-screen">
+                        <div className="w-full max-w-[480px] bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 p-8">
+                            <div className="flex flex-col items-center text-center gap-8">
+                                <div className="relative flex items-center justify-center w-full aspect-video bg-red-50 dark:bg-red-900/10 rounded-xl overflow-hidden">
+                                    <div className="flex flex-col items-center">
+                                        <span className="material-symbols-outlined text-red-500 text-7xl mb-2">wifi_off</span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    <h1 className="text-[#111418] dark:text-white text-2xl font-bold tracking-tight">Manual Mode</h1>
+                                    <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed">
+                                        Since this is a demo, you can't create an estimate here. Go to the Customer View to submit a new request.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col w-full gap-4">
+                                    <button onClick={() => navigate('/request')} className="flex w-full items-center justify-center rounded-lg h-12 bg-primary text-white font-bold hover:bg-primary/90">
+                                        Go to Customer Form
+                                    </button>
+                                    <button onClick={() => navigate('/dashboard')} className="flex w-full items-center justify-center rounded-lg h-12 bg-gray-100 dark:bg-gray-800 text-[#111418] dark:text-white text-sm font-semibold">
+                                        Back to Dashboard
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </Layout>
+            );
+        };
+
+
+        const CustomerStatusScreen = () => {
+            const navigate = useNavigate();
+            const { id } = useParams();
+            const [estimate, setEstimate] = useState(null);
+
+            // Polling to simulate real-time updates
+            useEffect(() => {
+                const checkStatus = () => {
+                    const est = Store.getEstimate(id);
+                    if (est) setEstimate(est);
+                };
+                checkStatus();
+                const interval = setInterval(checkStatus, 2000);
+                return () => clearInterval(interval);
+            }, [id]);
+
+            if (!estimate) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+
+            if (estimate.status === 'archived' || estimate.status === 'deleted') {
+                return (
+                    <Layout hideHeader>
+                        <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-gray-50 dark:bg-background-dark">
+                            <div className="size-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6">
+                                <span className="material-symbols-outlined text-gray-400 text-4xl">folder_off</span>
+                            </div>
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Request Archived</h1>
+                            <p className="text-gray-500 dark:text-gray-400 mt-2 max-w-sm">This request has been archived or removed by the shop.</p>
+                            <button
+                                onClick={() => navigate('/customer-dashboard')}
+                                className="mt-8 px-6 py-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-bold rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                                Back to Dashboard
+                            </button>
+                        </div>
+                    </Layout>
+                );
+            }
+
+            return (
+                <Layout hideHeader>
+                    <div className="min-h-screen bg-gray-50 dark:bg-background-dark py-10 px-4">
+                        <div className="w-full max-w-[600px] mx-auto bg-white dark:bg-gray-900 rounded-xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
+                            <header className="bg-primary/10 p-6 flex flex-col items-center text-center gap-2 border-b border-primary/10 relative">
+                                <button onClick={() => navigate('/customer-dashboard')} className="absolute top-4 left-4 p-2 rounded-full hover:bg-white/50 transition-colors text-primary">
+                                    <span className="material-symbols-outlined">arrow_back</span>
+                                </button>
+                                <div className="size-16 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center shadow-sm mb-2">
+                                    <span className="material-symbols-outlined text-primary text-3xl">local_taxi</span>
+                                </div>
+                                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Status Update</h1>
+                                <p className="text-sm text-gray-500">Tracking for: {estimate.vehicle}</p>
+                            </header>
+
+                            <div className="p-8">
+                                <div className="flex flex-col gap-8">
+                                    <div className="flex items-start gap-4">
+                                        <div className={`mt-1 size-8 rounded-full flex items-center justify-center shrink-0 ${estimate.status !== 'pending' ? 'bg-green-100 text-green-600' : 'bg-primary text-white animate-pulse'}`}>
+                                            <span className="material-symbols-outlined text-lg">{estimate.status !== 'pending' ? 'check' : 'hourglass_top'}</span>
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-lg">Awaiting Mechanic Approval</h3>
+                                            <p className="text-gray-500 text-sm mt-1">Your request has been received. The mechanic is reviewing the details and calculating the final cost.</p>
+                                            {estimate.status === 'pending' && (
+                                                <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-primary bg-primary/5 p-2 rounded w-fit">
+                                                    <span className="material-symbols-outlined text-sm animate-spin">sync</span> Checking for updates...
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className={`flex items-start gap-4 ${estimate.status === 'pending' ? 'opacity-30' : ''}`}>
+                                        <div className={`mt-1 size-8 rounded-full flex items-center justify-center shrink-0 ${estimate.status === 'approved' || estimate.status === 'sent' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                            <span className="material-symbols-outlined text-lg">payments</span>
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-lg">Invoice Ready</h3>
+                                            <p className="text-gray-500 text-sm mt-1">Order confirmed. You will receive an invoice via WhatsApp shortly.</p>
+                                            {(estimate.status === 'approved' || estimate.status === 'sent') && (
+                                                <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-sm font-semibold text-green-800 dark:text-green-300">Total Amount</span>
+                                                        <span className="text-xl font-black text-green-700 dark:text-green-400">${Number(estimate.amount).toFixed(2)}</span>
+                                                    </div>
+                                                    <p className="text-xs text-green-600 dark:text-green-400 mb-4">Includes labor, parts, and taxes.</p>
+
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => downloadPDF(estimate)} className="flex-1 bg-white text-green-700 border border-green-200 hover:bg-green-50 font-bold py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-1">
+                                                            <span className="material-symbols-outlined text-sm">download</span> Download
+                                                        </button>
+                                                        <button onClick={() => alert('Redirecting to Payment Gateway...')} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-1">
+                                                            <span className="material-symbols-outlined text-sm">credit_card</span> Pay Now
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-gray-50 dark:bg-gray-800/50 p-4 text-center border-t border-gray-100 dark:border-gray-800">
+                                <p className="text-xs text-gray-400">Need help? Call the shop at (555) 123-4567</p>
+                            </div>
+                        </div>
+                    </div>
+                </Layout>
+            );
+        };
+
+        const CustomerRequestScreen = () => {
+            const navigate = useNavigate();
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const name = formData.get('customer');
+                const phone = formData.get('phone');
+                const email = formData.get('email');
+
+                // 1. Ensure User Exists (Auto-Registration)
+                try {
+                    const users = Store.getUsers();
+                    let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+                    if (!user) {
+                        user = Store.register(name, email, 'temp_pass_' + Date.now(), phone);
+                    }
+                    // Auto-login to show their dashboard/status immediately
+                    localStorage.setItem('mechflow_user', JSON.stringify(user));
+                } catch (err) {
+                    console.error("Registration error:", err);
+                }
+
+                const newEst = Store.createEstimate({
+                    customer: name,
+                    phone: phone,
+                    email: email,
+                    vehicle: formData.get('vehicle'),
+                    service: formData.get('service'),
+                    notes: formData.get('notes') || 'Customer submitted via form'
+                });
+
+                const btn = e.target.querySelector('button[type="submit"]');
+                btn.innerText = "Request Sent!";
+                btn.className += " bg-green-600";
+                setTimeout(() => navigate('/status/' + newEst.id), 1000);
+            };
+
+            return (
+                <div className="bg-background-light dark:bg-background-dark min-h-screen flex justify-center py-5 px-4">
+                    <div className="w-full max-w-[600px] bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 md:p-10 animate-[slideUp_0.4s_ease-out]">
+                        <header className="flex items-center gap-4 text-primary mb-8 border-b border-gray-100 dark:border-gray-800 pb-4">
+                            <span className="material-symbols-outlined text-3xl">build_circle</span>
+                            <h2 className="text-xl font-bold">AutoMechanic Pro</h2>
+                        </header>
+
+                        <div className="mb-6">
+                            <button onClick={() => navigate('/')} className="text-gray-500 hover:text-primary flex items-center gap-1 text-sm font-medium mb-4">
+                                <span className="material-symbols-outlined text-base">arrow_back</span> Back to Home
+                            </button>
+                            <h1 className="text-3xl font-black mb-2 dark:text-white">Request an Estimate</h1>
+                            <p className="text-gray-600 dark:text-gray-400">Tell us about your vehicle and the service needed.</p>
+                        </div>
+
+                        <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-semibold dark:text-gray-200">Full Name</label>
+                                <input name="customer" className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-14 px-4" placeholder="John Doe" required />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="font-semibold dark:text-gray-200">Email Address</label>
+                                    <input name="email" type="email" className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-14 px-4" placeholder="john@example.com" required />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="font-semibold dark:text-gray-200">Phone Number</label>
+                                    <input name="phone" type="tel" className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-14 px-4" placeholder="(555) 000-0000" required />
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-semibold dark:text-gray-200">Vehicle Details</label>
+                                <input name="vehicle" className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-14 px-4" placeholder="e.g. 2018 Toyota Camry" required />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-semibold dark:text-gray-200">Service Needed</label>
+                                <select name="service" className="form-select rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-14 px-4" required>
+                                    <option value="">Select a service</option>
+                                    <option value="Oil Change">Oil Change</option>
+                                    <option value="Brake Repair">Brake Repair</option>
+                                    <option value="Engine Diagnostic">Engine Diagnostic</option>
+                                    <option value="General Repair">General Repair</option>
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-semibold dark:text-gray-200">Optional Notes</label>
+                                <textarea name="notes" className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 min-h-24 p-4" placeholder="Describe any specific issues..." />
+                            </div>
+                            <button className="w-full bg-primary hover:bg-primary/90 text-white font-bold text-lg py-5 rounded-xl shadow-lg mt-4 transition-all" type="submit">
+                                Submit Request
+                            </button>
+                        </form>
+                        <div className="mt-6 text-center">
+                            <button onClick={() => navigate('/login')} className="text-sm text-gray-500 hover:text-primary bg-transparent border-none cursor-pointer">Mechanic Login</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main App ---
+
+
+        const HistoryScreen = () => {
+            const navigate = useNavigate();
+            const location = useLocation();
+            const searchParams = new URLSearchParams(location.search);
+            const customerFilter = searchParams.get('customer');
+
+            const [history, setHistory] = useState([]);
+
+            useEffect(() => {
+                const allEstimates = Store.getEstimates();
+                if (customerFilter) {
+                    setHistory(allEstimates.filter(e => e.customer === customerFilter));
+                } else {
+                    setHistory(allEstimates);
+                }
+            }, [customerFilter]);
+
+            return (
+                <Layout>
+                    <main className="flex justify-center py-6 px-4 pb-28">
+                        <div className="w-full max-w-[600px] flex flex-col gap-6">
+                            <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                    {customerFilter && (
+                                        <button onClick={() => navigate(-1)} className="material-symbols-outlined text-gray-500 hover:text-black dark:hover:text-white">arrow_back</button>
+                                    )}
+                                    <h2 className="text-2xl font-bold tracking-tight">{customerFilter ? `History: ${customerFilter}` : 'Service History'}</h2>
+                                </div>
+                                <p className="text-[#617589] text-sm">{customerFilter ? `Past jobs for ${customerFilter}` : 'Past estimates and invoices.'}</p>
+                            </div>
+
+                            {history.length === 0 ? (
+                                <div className="text-center py-10 bg-white dark:bg-gray-900 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
+                                    <p className="text-gray-500">No history found.</p>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-4">
+                                    {history.map(est => (
+                                        <div key={est.id}
+                                            onClick={() => navigate(`/invoice/${est.id}`)}
+                                            className="cursor-pointer bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-[#f0f2f4] dark:border-gray-800 overflow-hidden flex transition-all hover:bg-gray-50 dark:hover:bg-gray-800">
+                                            <div className="w-24 bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${est.img})` }}></div>
+                                            <div className="flex-1 p-3 flex flex-col justify-center gap-1">
+                                                <div className="flex justify-between items-center">
+                                                    <h3 className="font-bold text-[#111418] dark:text-white text-sm">{est.customer}</h3>
+                                                    <span className="text-xs text-gray-500">{est.date}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <p className="text-xs text-gray-500">{est.vehicle}</p>
+                                                    <StatusBadge status={est.status} />
+                                                </div>
+                                                <div className="mt-1">
+                                                    <span className="text-sm font-bold text-primary">${Number(est.amount).toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </main>
+                </Layout>
+            );
+        };
+
+        const CustomersScreen = () => {
+            const navigate = useNavigate();
+            const [customers, setCustomers] = useState([]);
+
+            useEffect(() => {
+                const estimates = Store.getEstimates();
+                // Deduplicate customers by name for this view
+                const uniqueCustomers = [];
+                const map = new Map();
+                for (const item of estimates) {
+                    if (!map.has(item.customer)) {
+                        map.set(item.customer, true);
+                        uniqueCustomers.push(item);
+                    }
+                }
+                setCustomers(uniqueCustomers);
+            }, []);
+
+            return (
+                <Layout>
+                    <main className="flex justify-center py-6 px-4 pb-28">
+                        <div className="w-full max-w-[600px] flex flex-col gap-6">
+                            <div className="flex flex-col gap-1">
+                                <h2 className="text-2xl font-bold tracking-tight">My Customers</h2>
+                                <p className="text-[#617589] text-sm">Contact list and vehicle details.</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {customers.map((cust, idx) => (
+                                    <div key={idx} className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col items-center text-center gap-3 hover:shadow-md transition-shadow">
+                                        <div className="size-16 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                            <img src={`https://ui-avatars.com/api/?name=${cust.customer.replace(' ', '+')}&background=random`} alt={cust.customer} className="w-full h-full object-cover" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-lg">{cust.customer}</h3>
+                                            <p className="text-sm text-gray-500">{cust.phone}</p>
+                                        </div>
+                                        <div className="w-full pt-3 border-t border-gray-50 dark:border-gray-800 mt-1">
+                                            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 bg-gray-50 dark:bg-gray-800/50 py-2 rounded-lg">
+                                                <span className="material-symbols-outlined text-sm">directions_car</span>
+                                                {cust.vehicle}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => navigate(`/history?customer=${encodeURIComponent(cust.customer)}`)}
+                                            className="w-full py-2 text-primary text-sm font-bold hover:bg-primary/5 rounded-lg transition-colors cursor-pointer">
+                                            View History
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </main>
+                </Layout>
+            );
+        };
+
+        const ProfileScreen = () => {
+            const navigate = useNavigate();
+            return (
+                <Layout>
+                    <main className="flex justify-center py-10 px-4 pb-28">
+                        <div className="w-full max-w-[500px] flex flex-col gap-6">
+                            <div className="bg-white dark:bg-gray-900 rounded-xl p-8 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col items-center">
+                                <div className="relative mb-4">
+                                    <div className="size-24 rounded-full bg-cover bg-center border-4 border-gray-50 dark:border-gray-800" style={{ backgroundImage: 'url("https://ui-avatars.com/api/?name=Mechanic&background=0D8ABC&color=fff")' }}></div>
+                                    <button className="absolute bottom-0 right-0 bg-primary text-white rounded-full p-1.5 shadow-md hover:bg-blue-600 transition-colors">
+                                        <span className="material-symbols-outlined text-sm">edit</span>
+                                    </button>
+                                </div>
+                                <h1 className="text-2xl font-bold">John Mechanic</h1>
+                                <p className="text-gray-500">Shop Owner • Precision Auto Repair</p>
+
+                                <div className="flex gap-4 w-full mt-6 border-t border-gray-100 dark:border-gray-800 pt-6">
+                                    <div className="flex-1 text-center">
+                                        <span className="block text-xl font-bold text-primary">124</span>
+                                        <span className="text-xs text-gray-500 uppercase tracking-wide">Jobs Done</span>
+                                    </div>
+                                    <div className="flex-1 text-center border-l border-gray-100 dark:border-gray-800">
+                                        <span className="block text-xl font-bold text-primary">4.9</span>
+                                        <span className="text-xs text-gray-500 uppercase tracking-wide">Rating</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+                                <div className="p-4 border-b border-gray-50 dark:border-gray-800 font-bold">Account Details</div>
+                                <div className="p-6 flex flex-col gap-4">
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-sm font-semibold">Full Name</label>
+                                        <input className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-10 px-3" defaultValue="John Mechanic" type="text" />
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-sm font-semibold">Email</label>
+                                        <input className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-10 px-3" defaultValue="mechanic@example.com" type="email" />
+                                    </div>
+                                    <div className="pt-2">
+                                        <button className="text-primary text-sm font-bold hover:underline">Change Password</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </Layout>
+            )
+        }
+
+        const NotificationsScreen = () => {
+            const [notifications, setNotifications] = useState([
+                { id: 1, title: 'New Request', message: 'Sarah Smith requested an estimate for Engine Diagnostic', time: '2 mins ago', read: false },
+                { id: 2, title: 'Invoice Paid', message: 'Invoice #EST-9012 was paid by John Doe', time: '1 hour ago', read: false },
+                { id: 3, title: 'System Update', message: 'MechFlow has been updated to version 2.0', time: '1 day ago', read: true },
+            ]);
+
+            const markRead = (id) => {
+                setNotifications(notifications.map(n => n.id === id ? Object.assign({}, n, { read: true }) : n));
+            }
+
+            return (
+                <Layout>
+                    <main className="flex justify-center py-6 px-4 pb-28">
+                        <div className="w-full max-w-[600px] flex flex-col gap-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-bold tracking-tight">Notifications</h2>
+                                <button className="text-primary text-sm font-bold" onClick={() => setNotifications(notifications.map(n => Object.assign({}, n, { read: true })))}>Mark all read</button>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                                {notifications.map(notif => (
+                                    <div key={notif.id} onClick={() => markRead(notif.id)} className={`bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex items-start gap-3 cursor-pointer transition-colors ${!notif.read ? 'border-l-4 border-l-primary bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                                        <div className={`mt-1 p-2 rounded-full ${!notif.read ? 'bg-primary/20 text-primary' : 'bg-gray-100 text-gray-500'}`}>
+                                            <span className="material-symbols-outlined text-sm">notifications</span>
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-start">
+                                                <h3 className={`text-sm ${!notif.read ? 'font-bold' : 'font-semibold'}`}>{notif.title}</h3>
+                                                <span className="text-xs text-gray-400">{notif.time}</span>
+                                            </div>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{notif.message}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </main>
+                </Layout>
+            )
+        }
+
+        const App = () => {
+            return (
+                <MemoryRouter>
+                    <Routes>
+                        <Route path="/" element={<LoginScreen />} />
+                        <Route path="/register" element={<RegisterScreen />} />
+                        <Route path="/customer-dashboard" element={<CustomerDashboardScreen />} />
+                        <Route path="/request" element={<CustomerRequestScreen />} />
+                        <Route path="/status/:id" element={<CustomerStatusScreen />} />
+                        <Route path="/offline-error" element={<OfflineErrorScreen />} />
+                        <Route path="/login" element={<LoginScreen />} />
+                    </Routes>
+                </MemoryRouter>
+            );
+        };
+
+        const container = document.getElementById('root');
+        const root = createRoot(container);
+        root.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        );
+    </script>
+</body>
+
+</html>
