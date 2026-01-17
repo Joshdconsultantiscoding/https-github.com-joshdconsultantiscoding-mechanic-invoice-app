@@ -9,10 +9,16 @@ const PRICING_DATA = {
     'General Repair': { labor: 100, parts: 50 },
 };
 
-// Initial Users for Auth System
-const MALE_EMOJIS = Array.from({ length: 15 }, (_, i) => `${(i + 1).toString().padStart(3, '0')}.png`);
+// Simple pad helper for environments without padStart
+const pad = (num, size) => {
+    let s = num + "";
+    while (s.length < size) s = "0" + s;
+    return s;
+};
 
-const FEMALE_EMOJIS = Array.from({ length: 15 }, (_, i) => `${(i + 1).toString().padStart(3, '0')}.png`);
+// Initial Users for Auth System
+const MALE_EMOJIS = Array.from({ length: 15 }, (_, i) => `${pad(i + 1, 3)}.png`);
+const FEMALE_EMOJIS = Array.from({ length: 15 }, (_, i) => `${pad(i + 1, 3)}.png`);
 
 const DEFAULT_USERS = [
     { email: 'mechanic@example.com', password: 'password', role: 'mechanic', name: 'Mike The Mechanic', avatar: 'assets/emojis/male/001.png' },
@@ -21,93 +27,139 @@ const DEFAULT_USERS = [
 
 window.Store = {
     init: () => {
-        // Initialize Users if not present
-        if (!localStorage.getItem('mechflow_users')) {
-            localStorage.setItem('mechflow_users', JSON.stringify(DEFAULT_USERS));
-        } else {
-            // Patch existing default users to ensure they have avatars
-            const users = JSON.parse(localStorage.getItem('mechflow_users'));
-            let updated = false;
-            users.forEach(u => {
-                const defaultU = DEFAULT_USERS.find(du => du.email === u.email);
-                if (defaultU && (!u.avatar || u.avatar.includes('Whisk_'))) {
-                    u.avatar = defaultU.avatar;
-                    updated = true;
+        try {
+            // Initialize Users if not present
+            if (!localStorage.getItem('mechflow_users')) {
+                localStorage.setItem('mechflow_users', JSON.stringify(DEFAULT_USERS));
+            } else {
+                // Patch existing default users to ensure they have avatars
+                try {
+                    const users = JSON.parse(localStorage.getItem('mechflow_users')) || [];
+                    let updated = false;
+                    users.forEach(u => {
+                        const defaultU = DEFAULT_USERS.find(du => du.email === u.email);
+                        if (defaultU && (!u.avatar || u.avatar.includes('Whisk_'))) {
+                            u.avatar = defaultU.avatar;
+                            updated = true;
+                        }
+                    });
+                    if (updated) {
+                        localStorage.setItem('mechflow_users', JSON.stringify(users));
+                        // Also update current session if it's one of these users
+                        const current = localStorage.getItem('mechflow_user');
+                        if (current) {
+                            try {
+                                const parsed = JSON.parse(current);
+                                const match = users.find(u => u.email === parsed.email);
+                                if (match) localStorage.setItem('mechflow_user', JSON.stringify(match));
+                            } catch (e) { }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error patching users", e);
+                    localStorage.setItem('mechflow_users', JSON.stringify(DEFAULT_USERS));
+                }
+            }
+
+            // Patch all users to ensure they have an avatar and a shareKey
+            try {
+                const users = JSON.parse(localStorage.getItem('mechflow_users')) || [];
+                let globalUpdate = false;
+                users.forEach(u => {
+                    if (!u.avatar || u.avatar.includes('Whisk_') || u.avatar.includes('ui-avatars.com')) {
+                        const list = u.gender === 'female' ? FEMALE_EMOJIS : MALE_EMOJIS;
+                        const gender = u.gender || 'male';
+                        const randomEmoji = list[Math.floor(Math.random() * list.length)];
+                        u.avatar = `assets/emojis/${gender}/${randomEmoji}`;
+                        globalUpdate = true;
+                    }
+                    if (!u.shareKey && u.role === 'customer') {
+                        u.shareKey = 'C-' + Math.random().toString(36).substr(2, 5).toUpperCase();
+                        globalUpdate = true;
+                    }
+                });
+                if (globalUpdate) {
+                    localStorage.setItem('mechflow_users', JSON.stringify(users));
+                    const current = localStorage.getItem('mechflow_user');
+                    if (current) {
+                        try {
+                            const parsed = JSON.parse(current);
+                            const match = users.find(u => u.email === parsed.email);
+                            if (match) localStorage.setItem('mechflow_user', JSON.stringify(match));
+                        } catch (e) { }
+                    }
+                }
+            } catch (e) { }
+
+            // Initialize Estimates if not present
+            if (!localStorage.getItem('mechflow_estimates')) {
+                localStorage.setItem('mechflow_estimates', JSON.stringify(DEFAULT_ESTIMATES));
+            }
+            // Initialize Notifications
+            if (!localStorage.getItem('mechflow_notifications')) {
+                localStorage.setItem('mechflow_notifications', JSON.stringify([]));
+            }
+
+            // Patch Estimates
+            let estimates = [];
+            try {
+                estimates = JSON.parse(localStorage.getItem('mechflow_estimates')) || [];
+            } catch (e) {
+                estimates = [];
+            }
+            let estimatesUpdated = false;
+            const serviceImages = {
+                'Oil Change': 'assets/services/oil change.png',
+                'Brake Repair': 'assets/services/brake repair.png',
+                'Engine Diagnostic': 'assets/services/engine diagnostics.png',
+                'Engine Diagnostics': 'assets/services/engine diagnostics.png',
+                'General Repair': 'assets/services/general repair.png'
+            };
+            estimates.forEach(est => {
+                if (!est) return;
+                if (!est.customer) {
+                    est.customer = est.customerName || "Unknown Customer";
+                    estimatesUpdated = true;
+                }
+                if (!est.img || (typeof est.img === 'string' && (est.img.includes('unsplash.com') || est.img.includes('undefined')))) {
+                    est.img = serviceImages[est.service] || serviceImages['General Repair'];
+                    estimatesUpdated = true;
                 }
             });
-            if (updated) {
-                localStorage.setItem('mechflow_users', JSON.stringify(users));
-                // Also update current session if it's one of these users
-                const current = localStorage.getItem('mechflow_user');
-                if (current) {
-                    const parsed = JSON.parse(current);
-                    const match = users.find(u => u.email === parsed.email);
-                    if (match) localStorage.setItem('mechflow_user', JSON.stringify(match));
+            if (estimatesUpdated) {
+                localStorage.setItem('mechflow_estimates', JSON.stringify(estimates));
+            }
+
+            // Initialize Shop Status
+            if (!localStorage.getItem('mechflow_shop_status')) {
+                localStorage.setItem('mechflow_shop_status', 'open');
+            }
+
+            // Initialize Settings
+            if (!localStorage.getItem('mechflow_settings')) {
+                localStorage.setItem('mechflow_settings', JSON.stringify({
+                    businessName: 'Precision Auto Repair',
+                    businessLogo: 'assets/emojis/male/008.png',
+                    businessAddress: '123 Mechanics Lane, Suite 101, Los Angeles, CA 90210',
+                    businessPhone: '+1 (555) 987-6543',
+                    currencySymbol: '$',
+                    currencyCode: 'USD',
+                    taxRate: 8.25,
+                    footerText: 'Thank you for your business! All parts come with a 12-month warranty.'
+                }));
+            }
+
+            // Storage event sync
+            window.addEventListener('storage', (event) => {
+                if (event.key && event.key.startsWith('mechflow_')) {
+                    window.Store.notify({ type: 'STORAGE_UPDATED', key: event.key, newValue: event.newValue });
                 }
-            }
+            });
+        } catch (globalErr) {
+            console.error("Critical Store Initialization Failure", globalErr);
         }
-        // Patch all users to ensure they have an avatar and a shareKey
-        const users = JSON.parse(localStorage.getItem('mechflow_users')) || [];
-        let globalUpdate = false;
-        users.forEach(u => {
-            if (!u.avatar || u.avatar.includes('Whisk_') || u.avatar.includes('ui-avatars.com')) {
-                const list = u.gender === 'female' ? FEMALE_EMOJIS : MALE_EMOJIS;
-                const gender = u.gender || 'male';
-                const randomEmoji = list[Math.floor(Math.random() * list.length)];
-                u.avatar = `assets/emojis/${gender}/${randomEmoji}`;
-                globalUpdate = true;
-            }
-            if (!u.shareKey && u.role === 'customer') {
-                u.shareKey = 'C-' + Math.random().toString(36).substr(2, 5).toUpperCase();
-                globalUpdate = true;
-            }
-        });
-        if (globalUpdate) {
-            localStorage.setItem('mechflow_users', JSON.stringify(users));
-            const current = localStorage.getItem('mechflow_user');
-            if (current) {
-                const parsed = JSON.parse(current);
-                const match = users.find(u => u.email === parsed.email);
-                if (match) localStorage.setItem('mechflow_user', JSON.stringify(match));
-            }
-        }
-        // Initialize Estimates if not present
-        if (!localStorage.getItem('mechflow_estimates')) {
-            localStorage.setItem('mechflow_estimates', JSON.stringify(DEFAULT_ESTIMATES));
-        }
-        // Initialize Notifications
-        if (!localStorage.getItem('mechflow_notifications')) {
-            localStorage.setItem('mechflow_notifications', JSON.stringify([]));
-        }
-
-        // Patch Estimates to use local assets for images
-        const estimates = JSON.parse(localStorage.getItem('mechflow_estimates')) || [];
-        let estimatesUpdated = false;
-        const serviceImages = {
-            'Oil Change': 'assets/services/oil change.png',
-            'Brake Repair': 'assets/services/brake repair.png',
-            'Engine Diagnostic': 'assets/services/engine diagnostics.png',
-            'Engine Diagnostics': 'assets/services/engine diagnostics.png',
-            'General Repair': 'assets/services/general repair.png'
-        };
-        estimates.forEach(est => {
-            if (!est.img || est.img.includes('unsplash.com') || est.img.includes('undefined')) {
-                est.img = serviceImages[est.service] || serviceImages['General Repair'];
-                estimatesUpdated = true;
-            }
-        });
-        if (estimatesUpdated) {
-            localStorage.setItem('mechflow_estimates', JSON.stringify(estimates));
-        }
-
-        // Add storage event listener for cross-tab sync
-        window.addEventListener('storage', (event) => {
-            if (event.key && event.key.startsWith('mechflow_')) {
-                window.Store.notify({ type: 'STORAGE_UPDATED', key: event.key, newValue: event.newValue });
-            }
-        });
     },
-    // Subscriber System for "Real-time" Reactive UI
+    // Subscriber System
     subscribers: [],
     subscribe: (callback) => {
         window.Store.subscribers.push(callback);
@@ -116,22 +168,24 @@ window.Store = {
         };
     },
     notify: (event) => {
-        window.Store.subscribers.forEach(callback => callback(event));
+        window.Store.subscribers.forEach(callback => {
+            try { callback(event); } catch (e) { }
+        });
     },
 
-    // Request Permission for Browser Notifications
     requestNotificationPermission: async () => {
         if (!("Notification" in window)) return false;
-        const permission = await Notification.requestPermission();
-        return permission === 'granted';
+        try {
+            const permission = await Notification.requestPermission();
+            return permission === 'granted';
+        } catch (e) { return false; }
     },
-    // Logic to send a browser push notification
     sendPushNotification: (title, body, data = {}) => {
         if (!("Notification" in window) || Notification.permission !== "granted") return;
         try {
             const n = new Notification(title, {
                 body: body,
-                icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png', // Generic car/wrench icon
+                icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
                 tag: data.id || 'mechflow-alert',
                 data: data
             });
@@ -150,7 +204,51 @@ window.Store = {
         return phone.replace(/\D/g, "");
     },
 
-    // Notification Logic
+    getGreeting: () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'Morning';
+        if (hour < 18) return 'Afternoon';
+        return 'Evening';
+    },
+
+    getShopStatus: () => localStorage.getItem('mechflow_shop_status') || 'open',
+
+    setShopStatus: (status) => {
+        localStorage.setItem('mechflow_shop_status', status);
+        window.Store.notify({ type: 'SHOP_STATUS_UPDATED', status });
+    },
+
+    getSettings: () => {
+        try {
+            return JSON.parse(localStorage.getItem('mechflow_settings')) || {
+                businessName: 'Precision Auto Repair',
+                businessLogo: 'assets/emojis/male/008.png',
+                currencySymbol: '$'
+            };
+        } catch (e) {
+            return { businessName: 'Precision Auto Repair', businessLogo: 'assets/emojis/male/008.png', currencySymbol: '$' };
+        }
+    },
+
+    saveSettings: (settings) => {
+        try {
+            const current = window.Store.getSettings();
+            const updated = Object.assign({}, current, settings);
+            localStorage.setItem('mechflow_settings', JSON.stringify(updated));
+            window.Store.notify({ type: 'SETTINGS_UPDATED', settings: updated });
+        } catch (e) { }
+    },
+
+    getStats: () => {
+        try {
+            const estimates = window.Store.getEstimates();
+            const completedJobs = estimates.filter(e => e.status === 'sent' || e.paid).length;
+            const baseRating = 4.5;
+            const rating = Math.min(5.0, baseRating + (completedJobs * 0.01)).toFixed(1);
+            return { jobsDone: completedJobs + 124, rating: rating };
+        } catch (e) { return { jobsDone: 112, rating: 4.8 }; }
+    },
+
     getNotifications: (role, email) => {
         try {
             const all = JSON.parse(localStorage.getItem('mechflow_notifications')) || [];
@@ -159,85 +257,75 @@ window.Store = {
         } catch (e) { return []; }
     },
     addNotification: (role, type, title, message, data = {}) => {
-        const notifications = JSON.parse(localStorage.getItem('mechflow_notifications')) || [];
-        const newNotif = {
-            id: 'NOTIF-' + Date.now(),
-            role,
-            type,
-            title,
-            message,
-            data,
-            read: false,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            timestamp: Date.now()
-        };
-        // If it's for customer, we need to store their email to target them
-        if (role === 'customer' && data.email) {
-            newNotif.email = data.email;
-        }
-
-        notifications.unshift(newNotif);
-        localStorage.setItem('mechflow_notifications', JSON.stringify(notifications.slice(0, 50))); // Keep last 50
-
-        // Internal Notify
-        window.Store.notify({ type: 'NOTIFICATION_ADDED', notification: newNotif });
-
-        // Browser Push Notification (if in foreground or background but same origin)
-        window.Store.sendPushNotification(title, message, {
-            id: newNotif.id,
-            url: role === 'customer' ? `#/status/${data.id}` : `#/review/${data.id}`
-        });
+        try {
+            const notifications = JSON.parse(localStorage.getItem('mechflow_notifications')) || [];
+            const newNotif = {
+                id: 'NOTIF-' + Date.now(),
+                role,
+                type,
+                title,
+                message,
+                data,
+                read: false,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: Date.now()
+            };
+            if (role === 'customer' && data.email) newNotif.email = data.email;
+            notifications.unshift(newNotif);
+            localStorage.setItem('mechflow_notifications', JSON.stringify(notifications.slice(0, 50)));
+            window.Store.notify({ type: 'NOTIFICATION_ADDED', notification: newNotif });
+            window.Store.sendPushNotification(title, message, {
+                id: newNotif.id,
+                url: role === 'customer' ? `#/status/${data.id}` : `#/review/${data.id}`
+            });
+        } catch (e) { }
     },
     markNotificationAsRead: (id) => {
-        const notifications = JSON.parse(localStorage.getItem('mechflow_notifications')) || [];
-        const index = notifications.findIndex(n => n.id === id);
-        if (index >= 0) {
-            notifications[index].read = true;
-            localStorage.setItem('mechflow_notifications', JSON.stringify(notifications));
-            window.Store.notify({ type: 'NOTIFICATION_UPDATED' });
-        }
+        try {
+            const notifications = JSON.parse(localStorage.getItem('mechflow_notifications')) || [];
+            const index = notifications.findIndex(n => n.id === id);
+            if (index >= 0) {
+                notifications[index].read = true;
+                localStorage.setItem('mechflow_notifications', JSON.stringify(notifications));
+                window.Store.notify({ type: 'NOTIFICATION_UPDATED' });
+            }
+        } catch (e) { }
     },
     getUsers: () => {
         try {
-            return JSON.parse(localStorage.getItem('mechflow_users')) || [];
-        } catch (e) {
-            return [];
-        }
+            return JSON.parse(localStorage.getItem('mechflow_users')) || DEFAULT_USERS;
+        } catch (e) { return DEFAULT_USERS; }
     },
     saveUser: (user) => {
-        const users = window.Store.getUsers();
-        // Check if updating or adding
-        const index = users.findIndex(u => u.email === user.email);
-        if (index >= 0) {
-            users[index] = user;
-        } else {
-            users.push(user);
-        }
-        localStorage.setItem('mechflow_users', JSON.stringify(users));
-        window.Store.notify({ type: 'USER_UPDATED' });
+        try {
+            const users = window.Store.getUsers();
+            const index = users.findIndex(u => u.email === user.email);
+            if (index >= 0) users[index] = user;
+            else users.push(user);
+            localStorage.setItem('mechflow_users', JSON.stringify(users));
+            window.Store.notify({ type: 'USER_UPDATED' });
+        } catch (e) { }
     },
     getCurrentUser: () => {
         try {
             const user = localStorage.getItem('mechflow_user');
             return user ? JSON.parse(user) : null;
-        } catch (e) {
-            console.error("Error parsing user", e);
-            return null;
-        }
+        } catch (e) { return null; }
     },
     assignAvatar: (gender) => {
-        const list = gender === 'female' ? FEMALE_EMOJIS : MALE_EMOJIS;
-        const randomEmoji = list[Math.floor(Math.random() * list.length)];
-        const avatarPath = `assets/emojis/${gender}/${randomEmoji}`;
-
-        const currentUser = window.Store.getCurrentUser();
-        if (currentUser) {
-            currentUser.avatar = avatarPath;
-            window.Store.saveUser(currentUser);
-            localStorage.setItem('mechflow_user', JSON.stringify(currentUser));
-            window.Store.notify({ type: 'USER_UPDATED', user: currentUser });
-        }
-        return avatarPath;
+        try {
+            const list = gender === 'female' ? FEMALE_EMOJIS : MALE_EMOJIS;
+            const randomEmoji = list[Math.floor(Math.random() * list.length)];
+            const avatarPath = `assets/emojis/${gender}/${randomEmoji}`;
+            const currentUser = window.Store.getCurrentUser();
+            if (currentUser) {
+                currentUser.avatar = avatarPath;
+                window.Store.saveUser(currentUser);
+                localStorage.setItem('mechflow_user', JSON.stringify(currentUser));
+                window.Store.notify({ type: 'USER_UPDATED', user: currentUser });
+            }
+            return avatarPath;
+        } catch (e) { return 'assets/emojis/male/001.png'; }
     },
     loginByKey: (key) => {
         const users = window.Store.getUsers();
@@ -260,7 +348,6 @@ window.Store = {
     },
     login: (email, password) => {
         const users = window.Store.getUsers();
-        // Secure mock login check (Email + Password)
         const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && (u.password === password || password === 'global_bypass'));
         if (user) {
             localStorage.setItem('mechflow_user', JSON.stringify(user));
@@ -270,16 +357,10 @@ window.Store = {
     },
     register: (name, email, password, phone) => {
         const users = window.Store.getUsers();
-        if (users.find(u => u.email === email)) {
-            throw new Error("Email already exists");
-        }
-        // Generate Unique 6-char Key (e.g., C-9X21)
+        if (users.find(u => u.email === email)) throw new Error("Email exists");
         const shareKey = 'C-' + Math.random().toString(36).substr(2, 5).toUpperCase();
-
-        // Auto-assign random avatar on registration
         const randomEmoji = MALE_EMOJIS[Math.floor(Math.random() * MALE_EMOJIS.length)];
         const avatar = `assets/emojis/male/${randomEmoji}`;
-
         const newUser = { name, email, password, phone: window.Store.normalizePhone(phone), role: 'customer', shareKey, avatar };
         window.Store.saveUser(newUser);
         localStorage.setItem('mechflow_user', JSON.stringify(newUser));
@@ -292,10 +373,7 @@ window.Store = {
         try {
             const data = localStorage.getItem('mechflow_estimates');
             return data ? JSON.parse(data) : DEFAULT_ESTIMATES;
-        } catch (e) {
-            console.error("Error parsing estimates", e);
-            return DEFAULT_ESTIMATES;
-        }
+        } catch (e) { return DEFAULT_ESTIMATES; }
     },
     getEstimate: (id) => {
         const estimates = window.Store.getEstimates();
@@ -303,60 +381,45 @@ window.Store = {
     },
     getCustomerEstimates: (phone, email, shareKey) => {
         const estimates = window.Store.getEstimates();
-        // Priority: Share Key (Unique) > Phone > Email
-        // MUST match at least one provided non-empty credential
         return estimates.filter(e => {
             if (shareKey && e.customerKey === shareKey) return true;
-            if (phone && e.phone && e.phone.replace(/\D/g, '') === phone.replace(/\D/g, '')) return true; // Normalize phone
-            if (email && (e.email || e.customer).toLowerCase() === email.toLowerCase()) return true; // Check email field or fallback to customer name if it's an email
+            if (phone && e.phone && e.phone.replace(/\D/g, '') === phone.replace(/\D/g, '')) return true;
+            if (email && (e.email || e.customer).toLowerCase() === email.toLowerCase()) return true;
             return false;
         });
     },
     saveEstimate: (estimate) => {
-        const estimates = window.Store.getEstimates();
-        const index = estimates.findIndex(e => e.id === estimate.id);
-        const oldStatus = index >= 0 ? estimates[index].status : null;
-
-        if (index >= 0) {
-            estimates[index] = estimate;
-        } else {
-            estimates.unshift(estimate);
-        }
-        localStorage.setItem('mechflow_estimates', JSON.stringify(estimates));
-
-        // Trigger Notification if status changed
-        if (oldStatus && oldStatus !== estimate.status) {
-            // Ensure we have an email to notify
-            let targetEmail = estimate.email;
-            if (!targetEmail) {
-                const users = window.Store.getUsers();
-                const normPhone = window.Store.normalizePhone(estimate.phone);
-                const user = users.find(u =>
-                    (estimate.customerKey && u.shareKey === estimate.customerKey) ||
-                    (estimate.phone && window.Store.normalizePhone(u.phone) === normPhone)
-                );
-                if (user) targetEmail = user.email;
+        try {
+            const estimates = window.Store.getEstimates();
+            const index = estimates.findIndex(e => e.id === estimate.id);
+            const oldStatus = index >= 0 ? estimates[index].status : null;
+            if (index >= 0) estimates[index] = estimate;
+            else estimates.unshift(estimate);
+            localStorage.setItem('mechflow_estimates', JSON.stringify(estimates));
+            if (oldStatus && oldStatus !== estimate.status) {
+                let targetEmail = estimate.email;
+                if (!targetEmail) {
+                    const users = window.Store.getUsers();
+                    const normPhone = window.Store.normalizePhone(estimate.phone);
+                    const user = users.find(u => (estimate.customerKey && u.shareKey === estimate.customerKey) || (estimate.phone && window.Store.normalizePhone(u.phone) === normPhone));
+                    if (user) targetEmail = user.email;
+                }
+                if (targetEmail) {
+                    window.Store.addNotification('customer', 'status_update', 'Repair Status Alert', `Your ${estimate.vehicle} service is now ${estimate.status.toUpperCase()}.`, { id: estimate.id, email: targetEmail });
+                }
             }
-
-            if (targetEmail) {
-                window.Store.addNotification('customer', 'status_update', 'Repair Status Alert', `Your ${estimate.vehicle} service is now ${estimate.status.toUpperCase()}.`, { id: estimate.id, email: targetEmail });
-            }
-        }
-
-        window.Store.notify({ type: 'ESTIMATE_UPDATED', estimate });
+            window.Store.notify({ type: 'ESTIMATE_UPDATED', estimate });
+        } catch (e) { }
     },
     createEstimate: (data) => {
-        let labor = 0;
-        let parts = 0;
+        let labor = 0, parts = 0;
         if (data.service && PRICING_DATA[data.service]) {
             labor = PRICING_DATA[data.service].labor;
             parts = PRICING_DATA[data.service].parts;
         }
-
         const subtotal = labor + parts;
         const tax = (subtotal * 0.0825);
         const total = subtotal + tax;
-
         const images = {
             'Oil Change': 'assets/services/oil change.png',
             'Brake Repair': 'assets/services/brake repair.png',
@@ -364,7 +427,7 @@ window.Store = {
             'Engine Diagnostics': 'assets/services/engine diagnostics.png',
             'General Repair': 'assets/services/general repair.png'
         };
-
+        const isOffline = window.Store.getShopStatus() === 'closed';
         const newEst = {
             id: 'EST-' + Math.floor(1000 + Math.random() * 9000),
             status: 'pending',
@@ -373,15 +436,14 @@ window.Store = {
             partsCost: parts,
             tax: tax,
             amount: total,
-            img: images[data.service] || images['General Repair']
+            img: images[data.service] || images['General Repair'],
+            offline_submission: isOffline
         };
-
         Object.assign(newEst, data);
         window.Store.saveEstimate(newEst);
-
-        // Notify Mechanic of New Request
-        window.Store.addNotification('mechanic', 'new_request', 'New Service Request', `New request from ${data.customer} for ${data.vehicle}`, { id: newEst.id });
-
+        const mechMessage = isOffline ? `While you were away, ${data.customer} checked on you for their ${data.vehicle}.` : `New request from ${data.customer} for ${data.vehicle}`;
+        const mechTitle = isOffline ? 'Missed Connection' : 'New Service Request';
+        window.Store.addNotification('mechanic', 'new_request', mechTitle, mechMessage, { id: newEst.id, offline_submission: isOffline });
         return newEst;
     },
     markPaid: (id) => {
@@ -394,20 +456,19 @@ window.Store = {
     deleteEstimate: (id) => {
         const est = window.Store.getEstimate(id);
         if (est) {
-            est.status = 'archived'; // Soft delete (archived)
+            est.status = 'archived';
             window.Store.saveEstimate(est);
         }
     },
     deleteCustomer: (customerName) => {
-        // Soft delete all estimates for this customer
-        let estimates = window.Store.getEstimates();
-        estimates.forEach(e => {
-            if (e.customer === customerName) {
-                e.status = 'archived';
-            }
-        });
-        localStorage.setItem('mechflow_estimates', JSON.stringify(estimates));
-        window.Store.notify({ type: 'CUSTOMER_DELETED' });
+        try {
+            let estimates = window.Store.getEstimates();
+            estimates.forEach(e => {
+                if (e.customer === customerName) e.status = 'archived';
+            });
+            localStorage.setItem('mechflow_estimates', JSON.stringify(estimates));
+            window.Store.notify({ type: 'CUSTOMER_DELETED' });
+        } catch (e) { }
     }
 };
 
@@ -415,66 +476,56 @@ window.downloadPDF = (estimate) => {
     try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-
-        // Header
+        const settings = window.Store.getSettings();
         doc.setFontSize(22);
-        doc.setTextColor(40, 40, 40);
-        doc.text("MechFlow Invoice", 105, 20, null, null, "center");
-
+        doc.text(settings.businessName || "MechFlow Invoice", 105, 20, null, null, "center");
+        doc.setFontSize(10);
+        doc.text(settings.businessAddress || "", 105, 28, null, null, "center");
+        doc.text(settings.businessPhone || "", 105, 33, null, null, "center");
         doc.setFontSize(12);
-        doc.text(`Invoice ID: ${estimate.id}`, 20, 40);
-        doc.text(`Date: ${estimate.date}`, 20, 50);
-        doc.text(`Status: ${estimate.status.toUpperCase()}`, 20, 60);
-
-        doc.line(20, 65, 190, 65);
-
-        // Customer Details
+        doc.text(`Invoice ID: ${estimate.id}`, 20, 45);
+        doc.text(`Date: ${estimate.date}`, 20, 55);
+        doc.text(`Status: ${estimate.status.toUpperCase()}`, 20, 65);
+        doc.line(20, 70, 190, 70);
         doc.setFontSize(14);
-        doc.text("Bill To:", 20, 75);
+        doc.text("Bill To:", 20, 80);
         doc.setFontSize(12);
-        doc.text(estimate.customer, 20, 85);
-        doc.text(`Phone: ${estimate.phone}`, 20, 95);
-
-        // Vehicle Details
-        doc.setFontSize(14);
-        doc.text("Vehicle Service:", 120, 75);
-        doc.setFontSize(12);
-        doc.text(`${estimate.vehicle}`, 120, 85);
-        doc.text(`${estimate.service}`, 120, 95);
-
-        doc.line(20, 105, 190, 105);
-
-        // Line Items
-        let y = 120;
+        doc.text(estimate.customer, 20, 90);
+        doc.text(`Phone: ${estimate.phone}`, 20, 100);
+        doc.text("Vehicle Service:", 120, 80);
+        doc.text(`${estimate.vehicle}`, 120, 90);
+        doc.text(`${estimate.service}`, 120, 100);
+        doc.line(20, 110, 190, 110);
+        let y = 125;
         doc.text("Description", 20, y);
         doc.text("Amount", 160, y);
         y += 10;
         doc.line(20, y - 5, 190, y - 5);
-
+        const symbol = settings.currencySymbol || '$';
         doc.text("Labor Cost", 20, y);
-        doc.text(`$${Number(estimate.laborCost).toFixed(2)}`, 160, y);
+        doc.text(`${symbol}${Number(estimate.laborCost).toFixed(2)}`, 160, y);
         y += 10;
-
         doc.text("Parts Cost", 20, y);
-        doc.text(`$${Number(estimate.partsCost).toFixed(2)}`, 160, y);
+        doc.text(`${symbol}${Number(estimate.partsCost).toFixed(2)}`, 160, y);
         y += 10;
-
-        doc.text("Tax (8.25%)", 20, y);
-        doc.text(`$${Number(estimate.tax).toFixed(2)}`, 160, y);
+        doc.text(`Tax (${settings.taxRate || 8.25}%)`, 20, y);
+        doc.text(`${symbol}${Number(estimate.tax).toFixed(2)}`, 160, y);
         y += 20;
-
-        // Total
         doc.setFontSize(16);
-        doc.setFont(undefined, 'bold');
         doc.text("Total", 120, y);
-        doc.text(`$${Number(estimate.amount).toFixed(2)}`, 160, y);
-
+        doc.text(`${symbol}${Number(estimate.amount).toFixed(2)}`, 160, y);
+        y += 20;
+        doc.setFontSize(10);
+        doc.text(settings.footerText || "", 105, y, null, null, "center");
         doc.save(`Invoice_${estimate.id}.pdf`);
     } catch (e) {
         console.error("PDF Generation Error", e);
-        alert("Error generating PDF. Please try again.");
     }
 };
 
 // Initialize Store
-window.Store.init();
+try {
+    window.Store.init();
+} catch (e) {
+    console.error("Fatal Store Init Error", e);
+}
