@@ -99,8 +99,8 @@
 
         .glass-panel {
             background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
             border: 1px solid var(--border-color);
         }
 
@@ -156,6 +156,30 @@
         const Store = window.Store;
 
         // --- Components ---
+
+        const NotificationToast = ({ notification, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 8000);
+                return () => clearTimeout(timer);
+            }, []);
+
+            return (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-sm animate-slide-down">
+                    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-blue-500/20 p-4 flex items-start gap-4 ring-1 ring-black/5">
+                        <div className="size-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-white text-xl">notifications_active</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate">{notification.title}</h4>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{notification.message}</p>
+                        </div>
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                            <span className="material-symbols-outlined text-lg">close</span>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
 
         const PageLoader = () => (
             <div className="fixed inset-0 bg-[#000000] z-[9999] flex flex-col items-center justify-center">
@@ -223,13 +247,48 @@
             const activePath = location.pathname;
             const [sidebarOpen, setSidebarOpen] = useState(false);
             const [loading, setLoading] = useState(false);
+            const [toast, setToast] = useState(null);
+            const [unreadCount, setUnreadCount] = useState(0);
+            const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
             const user = Store.getCurrentUser();
 
             useEffect(() => {
+                // Check notification permission on mount
+                const dismissed = sessionStorage.getItem('mechflow_notif_dismissed');
+                if ("Notification" in window && Notification.permission === "default" && user && !dismissed) {
+                    setShowPermissionPrompt(true);
+                }
+            }, [user && user.email]);
+
+            useEffect(() => {
+                const updateCounts = () => {
+                    if (user) {
+                        const all = Store.getNotifications('customer', user.email);
+                        setUnreadCount(all.filter(n => !n.read).length);
+                    }
+                };
+
+                updateCounts();
+                const unsubscribe = Store.subscribe((event) => {
+                    if (event.type === 'NOTIFICATION_ADDED' && event.notification.role === 'customer' && event.notification.email === (user && user.email)) {
+                        setToast(event.notification);
+                        updateCounts();
+                    }
+                    if (event.type === 'STORAGE_UPDATED' && event.key === 'mechflow_notifications') {
+                        updateCounts();
+                        // For cross-tab sync, we just update counts.
+                        // The browser push notification is handled by the tab that triggered addNotification.
+                    }
+                    if (event.type === 'NOTIFICATION_UPDATED') updateCounts();
+                });
+
                 setLoading(true);
                 const timer = setTimeout(() => setLoading(false), 800);
-                return () => clearTimeout(timer);
-            }, [location.pathname]);
+                return () => {
+                    clearTimeout(timer);
+                    unsubscribe();
+                };
+            }, [location.pathname, user && user.email]);
 
             const showBack = activePath !== '/customer-dashboard' && activePath !== '/';
 
@@ -251,13 +310,42 @@
                 <React.Fragment>
                     <NavLink to="/customer-dashboard" icon="dashboard" label="Home" fillActive />
                     <NavLink to="/request" icon="add_circle" label="New Request" />
-                    {/* Add more customer links if needed */}
+                    <div className="relative">
+                        <NavLink to="/notifications" icon="notifications" label="Alerts" />
+                        {unreadCount > 0 && <span className="absolute left-6 top-2 size-2 bg-red-500 rounded-full border border-white dark:border-gray-900"></span>}
+                    </div>
                 </React.Fragment>
             );
 
             return (
-                <div className="flex min-h-screen bg-background-light dark:bg-background-dark">
+                <div className="flex h-screen bg-[#f8f9fb] dark:bg-black text-[#111418] dark:text-gray-100 font-['Outfit'] overflow-hidden">
+                    {/* Permission Prompt Banner */}
+                    {showPermissionPrompt && (
+                        <div className="fixed top-0 left-0 right-0 z-[100] bg-blue-600 text-white p-3 flex items-center justify-center gap-4 animate-slide-down no-print">
+                            <span className="material-symbols-outlined">notifications_active</span>
+                            <p className="text-sm font-bold">Enable real-time repair alerts on your device?</p>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={async () => {
+                                        const granted = await Store.requestNotificationPermission();
+                                        if (granted) alert('Notifications enabled!');
+                                        sessionStorage.setItem('mechflow_notif_dismissed', 'true');
+                                        setShowPermissionPrompt(false);
+                                    }}
+                                    className="bg-white text-blue-600 px-4 py-1.5 rounded-lg text-xs font-black uppercase"
+                                >
+                                    Enable
+                                </button>
+                                <button onClick={() => {
+                                    sessionStorage.setItem('mechflow_notif_dismissed', 'true');
+                                    setShowPermissionPrompt(false);
+                                }} className="bg-white/20 text-white px-4 py-1.5 rounded-lg text-xs font-bold uppercase">Maybe Later</button>
+                            </div>
+                        </div>
+                    )}
+
                     {loading && <PageLoader />}
+                    {toast && <NotificationToast notification={toast} onClose={() => setToast(null)} />}
                     {/* Desktop Sidebar */}
                     {!hideNav && (
                         <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 no-print">
@@ -310,8 +398,20 @@
                                         {activePath === '/customer-dashboard' ? 'My Dashboard' : 'Request Service'}
                                     </h1>
                                 </div>
-                                <div className="size-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
-                                    {user.name.charAt(0)}
+                                <div className="flex items-center gap-3">
+                                    <Link to="/notifications" className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400">
+                                        <span className="material-symbols-outlined">notifications</span>
+                                        {unreadCount > 0 && <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border border-white dark:border-gray-900"></span>}
+                                    </Link>
+                                    {user && user.avatar ? (
+                                        <div className="size-10 rounded-full border-2 border-primary/30 overflow-hidden shadow-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-800 dark:to-gray-900">
+                                            <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover scale-[1.6] relative top-1.5" />
+                                        </div>
+                                    ) : (
+                                        <div className="size-10 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/30 dark:to-blue-800/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-sm border-2 border-blue-200 dark:border-blue-800">
+                                            {user && user.name ? user.name.charAt(0) : 'C'}
+                                        </div>
+                                    )}
                                 </div>
                             </header>
                         )}
@@ -331,6 +431,11 @@
                                         <span className="material-symbols-outlined text-2xl">add</span>
                                     </div>
                                     <span className="text-[10px] font-bold text-blue-600 mt-1">New</span>
+                                </Link>
+                                <Link to="/notifications" className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors relative ${activePath === '/notifications' ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <span className={`material-symbols-outlined ${activePath === '/notifications' ? 'fill-1' : ''}`}>notifications</span>
+                                    {unreadCount > 0 && <span className="absolute top-2 right-4 size-2 bg-red-500 rounded-full border border-white dark:border-gray-900"></span>}
+                                    <span className="text-[10px] font-bold">Alerts</span>
                                 </Link>
                                 <button onClick={() => { Store.logout(); navigate('/login'); }} className="flex flex-col items-center gap-1 p-2 rounded-lg transition-colors text-gray-400 hover:text-red-500">
                                     <span className="material-symbols-outlined">logout</span>
@@ -367,8 +472,8 @@
                     <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5"></div>
 
                     <div className="relative z-10 text-center text-white mb-16 animate-[fadeIn_0.5s_ease-out]">
-                        <div className="size-28 bg-white/20 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto mb-8 border-2 border-white/30 shadow-2xl">
-                            <span className="material-symbols-outlined text-6xl">car_repair</span>
+                        <div className="size-28 bg-white/20 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto mb-8 border-2 border-white/30 shadow-2xl overflow-hidden">
+                            <img src="assets/emojis/male/003.png" className="w-full h-full object-cover scale-[1.6] relative top-6" />
                         </div>
                         <h1 className="text-6xl font-black mb-4 tracking-tight">MechFlow</h1>
                         <p className="text-blue-100 text-xl font-medium">Professional Auto Repair Services</p>
@@ -391,10 +496,6 @@
                             Track Status
                         </button>
                     </div>
-
-                    <a href="standalone.html" className="relative z-10 mt-16 text-white/50 text-sm hover:text-white transition-colors flex items-center gap-1">
-                        Mechanic Portal <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                    </a>
                 </div>
             );
         };
@@ -408,9 +509,13 @@
                 e.preventDefault();
                 const user = Store.loginByPhoneEmail(email.trim(), phone.trim());
                 if (user) {
-                    navigate('/dashboard');
+                    if (!user.avatar) {
+                        navigate('/onboarding');
+                    } else {
+                        navigate('/customer-dashboard');
+                    }
                 } else {
-                    alert("No requests found matching this email and phone number. Please check your details.");
+                    alert("No requests found matching this email and phone number. Please submit a new request first.");
                 }
             };
 
@@ -423,8 +528,8 @@
 
                         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700 animate-[fadeIn_0.3s_ease-out]">
                             <div className="text-center mb-8">
-                                <div className="size-20 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                                    <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-4xl">search</span>
+                                <div className="size-20 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto mb-6 overflow-hidden">
+                                    <img src="assets/emojis/female/002.png" className="w-full h-full object-cover scale-[1.6] relative top-4" />
                                 </div>
                                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Track Your Requests</h2>
                                 <p className="text-gray-500 dark:text-gray-400">Enter your contact information to view all your repair requests</p>
@@ -469,7 +574,7 @@
         const LoginScreen = () => {
             const navigate = useNavigate();
             const [email, setEmail] = useState('');
-            const [password, setPassword] = useState('');
+            const [phone, setPhone] = useState('');
             const [loadingExternal, setLoadingExternal] = useState(false);
             const [currentImg, setCurrentImg] = useState(0);
 
@@ -488,29 +593,23 @@
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                const user = Store.login(email.trim(), password.trim());
+                const user = Store.loginByPhoneEmail(email.trim(), phone.trim());
                 if (user) {
-                    navigate('/customer-dashboard');
+                    if (!user.avatar) {
+                        navigate('/onboarding');
+                    } else {
+                        navigate('/customer-dashboard');
+                    }
                 } else {
-                    alert("Invalid email or password. Please try again.");
+                    alert("Account not found. If you haven't submitted a request yet, please click 'Initialize Request'.");
                 }
             };
 
-            const handleMechanicPortal = () => {
-                window.location.href = 'standalone.html';
-            };
+
 
             return (
                 <div className="min-h-screen flex flex-col lg:flex-row text-gray-900 bg-white dark:bg-gray-900">
                     {loadingExternal && <PageLoader />}
-
-                    {/* Mechanic Link (Absolute to screen) */}
-                    <div className="absolute top-4 right-4 z-50">
-                        <button onClick={handleMechanicPortal} className="text-xs font-bold text-white/70 hover:text-white bg-black/30 hover:bg-black/50 px-4 py-2 rounded-full transition-all backdrop-blur-md border border-white/10 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-sm">construction</span>
-                            Mechanic Portal
-                        </button>
-                    </div>
 
                     {/* Left: New Request (Primary Hero) */}
                     <div className="w-full lg:w-1/2 min-h-[60vh] lg:min-h-screen relative flex flex-col items-center justify-center p-8 lg:p-12 text-center overflow-hidden bg-black lg:rounded-tr-[3rem] lg:rounded-br-[3rem]">
@@ -584,14 +683,14 @@
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase text-gray-400 tracking-widest pl-1">Password</label>
+                                        <label className="text-xs font-black uppercase text-gray-400 tracking-widest pl-1">Phone Number</label>
                                         <div className="relative">
-                                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">lock</span>
+                                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">phone</span>
                                             <input
-                                                value={password}
-                                                onChange={e => setPassword(e.target.value)}
-                                                type="password"
-                                                placeholder="••••••••"
+                                                value={phone}
+                                                onChange={e => setPhone(e.target.value)}
+                                                type="tel"
+                                                placeholder="(555) 000-0000"
                                                 required
                                                 className="w-full h-14 pl-12 pr-4 rounded-2xl bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:text-white font-bold transition-all"
                                             />
@@ -602,158 +701,17 @@
                                         <span className="material-symbols-outlined">login</span>
                                     </button>
                                 </form>
-                                <div className="mt-8 pt-8 border-t border-gray-50 dark:border-gray-700 text-center">
-                                    <p className="text-xs text-gray-400 font-medium">
-                                        New Customer? <Link to="/register" className="text-blue-500 hover:text-blue-400 font-bold ml-1">Create Account</Link>
-                                    </p>
-                                </div>
                             </div>
                         </div>
+                    </div>
 
-                        {/* Footer Info */}
-                        <div className="mt-12 lg:absolute lg:bottom-8 text-center text-gray-400 text-[10px] font-black uppercase tracking-[0.2em] opacity-50">
-                            &copy; {new Date().getFullYear()} MechFlow PRO.
-                        </div>
+                    {/* Footer Info */}
+                    <div className="mt-12 lg:absolute lg:bottom-8 text-center text-gray-400 text-[10px] font-black uppercase tracking-[0.2em] opacity-50">
+                        &copy; {new Date().getFullYear()} MechFlow PRO.
                     </div>
                 </div>
             );
         };
-
-
-        const RegisterScreen = () => {
-            const navigate = useNavigate();
-            const [formData, setFormData] = useState({ name: '', email: '', password: '', phone: '' });
-
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                try {
-                    // Register user
-                    Store.register(
-                        formData.name.trim(),
-                        formData.email.trim(),
-                        formData.password.trim(),
-                        formData.phone.trim()
-                    );
-
-                    // Auto-login logic
-                    const user = Store.login(formData.email.trim(), formData.password.trim());
-                    if (user) {
-                        navigate('/customer-dashboard');
-                    } else {
-                        // Fallback if login fails for some reason
-                        navigate('/');
-                    }
-                } catch (err) {
-                    alert(err.message);
-                }
-            };
-
-            return (
-                <div className="min-h-screen flex text-gray-900 bg-white dark:bg-gray-900">
-                    {/* Left Side - Image */}
-                    <div className="hidden lg:flex lg:w-1/2 relative bg-gray-900 overflow-hidden">
-                        <div className="absolute inset-0 bg-blue-600/20 z-10 mix-blend-multiply"></div>
-                        <img
-                            src="https://images.unsplash.com/photo-1485291571150-772bcfc10da5?q=80&w=2728&auto=format&fit=crop"
-                            className="absolute inset-0 w-full h-full object-cover opacity-80"
-                            alt="Car interior"
-                        />
-                        <div className="relative z-20 p-12 flex flex-col justify-between h-full text-white">
-                            <div>
-                                <button onClick={() => navigate('/')} className="flex items-center gap-2 text-white hover:text-blue-200 transition-colors group">
-                                    <span className="material-symbols-outlined group-hover:-translate-x-1 transition-transform">arrow_back</span>
-                                    <span className="font-medium">Back to Login</span>
-                                </button>
-                                <h2 className="text-4xl font-bold mt-12 max-w-md leading-tight">Join the Family.</h2>
-                                <p className="mt-4 text-gray-300 max-w-sm text-lg">Create an account to manage your vehicle services effortlessly.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Right Side - Form */}
-                    <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12 relative">
-                        <div className="absolute top-6 left-6 lg:hidden">
-                            <button onClick={() => navigate('/')} className="p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors">
-                                <span className="material-symbols-outlined">arrow_back</span>
-                            </button>
-                        </div>
-
-                        <div className="w-full max-w-md space-y-8">
-                            <div className="text-center lg:text-left">
-                                <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Create Account</h2>
-                                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Join MechFlow for simpler car care</p>
-                            </div>
-
-                            <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-                                <div className="grid grid-cols-1 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                            placeholder="John Doe"
-                                            value={formData.name}
-                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email address</label>
-                                        <input
-                                            type="email"
-                                            required
-                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                            placeholder="john@example.com"
-                                            value={formData.email}
-                                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone Number</label>
-                                        <input
-                                            type="tel"
-                                            required
-                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                            placeholder="(555) 000-0000"
-                                            value={formData.phone}
-                                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-                                        <input
-                                            type="password"
-                                            required
-                                            className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                            placeholder="••••••••"
-                                            value={formData.password}
-                                            onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-lg shadow-blue-600/30 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all transform hover:scale-[1.02] active:scale-[0.98] mt-6"
-                                >
-                                    Sign Up
-                                </button>
-                            </form>
-                            <div className="text-center mt-6">
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    Already have an account?{' '}
-                                    <Link to="/" className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
-                                        Login
-                                    </Link>
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-
 
         const CustomerDashboardScreen = () => {
             const navigate = useNavigate();
@@ -761,10 +719,15 @@
             const user = Store.getCurrentUser();
 
             useEffect(() => {
-                if (user) {
-                    setEstimates(Store.getCustomerEstimates(user.phone, user.email, user.shareKey));
-                }
-            }, []);
+                const fetch = () => {
+                    if (user) {
+                        setEstimates(Store.getCustomerEstimates(user.phone, user.email, user.shareKey));
+                    }
+                };
+                fetch();
+                const unsubscribe = Store.subscribe(() => fetch());
+                return () => unsubscribe();
+            }, [user && user.email]);
 
             return (
                 <Layout hideHeader>
@@ -775,9 +738,15 @@
                             <div className="max-w-xl mx-auto relative z-10">
                                 <div className="flex justify-between items-center mb-6">
                                     <div className="flex items-center gap-3">
-                                        <div className="size-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-                                            <span className="material-symbols-outlined text-2xl">person</span>
-                                        </div>
+                                        {user && user.avatar ? (
+                                            <div className="size-14 rounded-full border-2 border-white/50 overflow-hidden shadow-xl bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-sm">
+                                                <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover scale-[1.7] relative top-2" />
+                                            </div>
+                                        ) : (
+                                            <div className="size-14 rounded-full border-2 border-white/50 overflow-hidden shadow-xl bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-sm">
+                                                <img src="assets/emojis/male/001.png" alt="Avatar" className="w-full h-full object-cover scale-[1.7] relative top-2" />
+                                            </div>
+                                        )}
                                         <div>
                                             <p className="text-blue-100 text-sm font-medium">Welcome back,</p>
                                             <h1 className="text-2xl font-bold">{user && user.name ? user.name : 'Customer'}</h1>
@@ -844,7 +813,14 @@
                                     estimates.map(est => (
                                         <div key={est.id} onClick={() => navigate(`/status/${est.id}`)} className="group bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all">
                                             <div className="flex gap-4">
-                                                <div className="w-20 h-20 rounded-xl bg-cover bg-center shrink-0 shadow-inner" style={{ backgroundImage: `url(${est.img})` }}></div>
+                                                <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 shadow-inner bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                                                    <img
+                                                        src={est.img || 'assets/services/general repair.png'}
+                                                        alt={est.service}
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => { e.target.src = 'assets/services/general repair.png'; }}
+                                                    />
+                                                </div>
                                                 <div className="flex-1 flex flex-col justify-between py-1">
                                                     <div>
                                                         <div className="flex justify-between items-start">
@@ -896,7 +872,7 @@
                                     <button onClick={() => navigate('/request')} className="flex w-full items-center justify-center rounded-lg h-12 bg-primary text-white font-bold hover:bg-primary/90">
                                         Go to Customer Form
                                     </button>
-                                    <button onClick={() => navigate('/dashboard')} className="flex w-full items-center justify-center rounded-lg h-12 bg-gray-100 dark:bg-gray-800 text-[#111418] dark:text-white text-sm font-semibold">
+                                    <button onClick={() => navigate('/customer-dashboard')} className="flex w-full items-center justify-center rounded-lg h-12 bg-gray-100 dark:bg-gray-800 text-[#111418] dark:text-white text-sm font-semibold">
                                         Back to Dashboard
                                     </button>
                                 </div>
@@ -920,8 +896,13 @@
                     if (est) setEstimate(est);
                 };
                 checkStatus();
-                const interval = setInterval(checkStatus, 2000);
-                return () => clearInterval(interval);
+                const unsubscribe = Store.subscribe((event) => {
+                    if (event.type === 'ESTIMATE_UPDATED' && event.estimate.id === id) {
+                        checkStatus();
+                    }
+                    if (event.type === 'STORAGE_UPDATED') checkStatus();
+                });
+                return () => unsubscribe();
             }, [id]);
 
             if (!estimate) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
@@ -1023,7 +1004,7 @@
                 e.preventDefault();
                 const formData = new FormData(e.target);
                 const name = formData.get('customer');
-                const phone = formData.get('phone');
+                const phone = Store.normalizePhone(formData.get('phone'));
                 const email = formData.get('email');
 
                 // 1. Ensure User Exists (Auto-Registration)
@@ -1039,26 +1020,54 @@
                     console.error("Registration error:", err);
                 }
 
-                const newEst = Store.createEstimate({
-                    customer: name,
-                    phone: phone,
-                    email: email,
-                    vehicle: formData.get('vehicle'),
-                    service: formData.get('service'),
-                    notes: formData.get('notes') || 'Customer submitted via form'
-                });
-
                 const btn = e.target.querySelector('button[type="submit"]');
-                btn.innerText = "Request Sent!";
-                btn.className += " bg-green-600";
-                setTimeout(() => navigate('/status/' + newEst.id), 1000);
+                btn.disabled = true;
+                btn.innerHTML = `<span class="material-symbols-outlined animate-spin text-lg">sync</span> Processing...`;
+
+                setTimeout(() => {
+                    const newEst = Store.createEstimate({
+                        customer: name,
+                        phone: phone,
+                        email: email,
+                        vehicle: formData.get('vehicle'),
+                        service: formData.get('service'),
+                        notes: formData.get('notes') || 'Customer submitted via form'
+                    });
+
+                    btn.innerHTML = `<span class="material-symbols-outlined text-lg">check_circle</span> Sent Successfully!`;
+                    btn.className = btn.className.replace('bg-blue-600', 'bg-green-600');
+
+                    // Simulate Confirmation Overlay for 2 seconds
+                    const overlay = document.createElement('div');
+                    overlay.className = "fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in";
+                    overlay.innerHTML = `
+                            <div class="bg-white dark:bg-gray-900 rounded-[2.5rem] p-12 flex flex-col items-center text-center max-w-sm animate-zoom-in">
+                                <div class="size-24 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                                    <span class="material-symbols-outlined text-5xl text-green-600">verified</span>
+                                </div>
+                                <h2 class="text-3xl font-black mb-2">Request Shared!</h2>
+                                <p class="text-gray-500">The workshop has been alerted. You'll hear from us shortly.</p>
+                            </div>
+                        `;
+                    document.body.appendChild(overlay);
+
+                    setTimeout(() => {
+                        overlay.classList.add('animate-fade-out');
+                        setTimeout(() => {
+                            document.body.removeChild(overlay);
+                            navigate('/status/' + newEst.id);
+                        }, 500);
+                    }, 2000);
+                }, 1500);
             };
 
             return (
                 <div className="bg-background-light dark:bg-background-dark min-h-screen flex justify-center py-5 px-4">
                     <div className="w-full max-w-[600px] bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 md:p-10 animate-[slideUp_0.4s_ease-out]">
                         <header className="flex items-center gap-4 text-primary mb-8 border-b border-gray-100 dark:border-gray-800 pb-4">
-                            <span className="material-symbols-outlined text-3xl">build_circle</span>
+                            <div className="size-12 rounded-xl bg-primary/10 overflow-hidden flex items-center justify-center border border-primary/20">
+                                <img src="assets/emojis/male/005.png" className="w-full h-full object-cover scale-[1.8] relative top-3" />
+                            </div>
                             <h2 className="text-xl font-bold">AutoMechanic Pro</h2>
                         </header>
 
@@ -1107,9 +1116,7 @@
                                 Submit Request
                             </button>
                         </form>
-                        <div className="mt-6 text-center">
-                            <button onClick={() => navigate('/login')} className="text-sm text-gray-500 hover:text-primary bg-transparent border-none cursor-pointer">Mechanic Login</button>
-                        </div>
+
                     </div>
                 </div>
             );
@@ -1118,151 +1125,32 @@
         // --- Main App ---
 
 
-        const HistoryScreen = () => {
-            const navigate = useNavigate();
-            const location = useLocation();
-            const searchParams = new URLSearchParams(location.search);
-            const customerFilter = searchParams.get('customer');
-
-            const [history, setHistory] = useState([]);
-
-            useEffect(() => {
-                const allEstimates = Store.getEstimates();
-                if (customerFilter) {
-                    setHistory(allEstimates.filter(e => e.customer === customerFilter));
-                } else {
-                    setHistory(allEstimates);
-                }
-            }, [customerFilter]);
-
-            return (
-                <Layout>
-                    <main className="flex justify-center py-6 px-4 pb-28">
-                        <div className="w-full max-w-[600px] flex flex-col gap-6">
-                            <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-2">
-                                    {customerFilter && (
-                                        <button onClick={() => navigate(-1)} className="material-symbols-outlined text-gray-500 hover:text-black dark:hover:text-white">arrow_back</button>
-                                    )}
-                                    <h2 className="text-2xl font-bold tracking-tight">{customerFilter ? `History: ${customerFilter}` : 'Service History'}</h2>
-                                </div>
-                                <p className="text-[#617589] text-sm">{customerFilter ? `Past jobs for ${customerFilter}` : 'Past estimates and invoices.'}</p>
-                            </div>
-
-                            {history.length === 0 ? (
-                                <div className="text-center py-10 bg-white dark:bg-gray-900 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-                                    <p className="text-gray-500">No history found.</p>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col gap-4">
-                                    {history.map(est => (
-                                        <div key={est.id}
-                                            onClick={() => navigate(`/invoice/${est.id}`)}
-                                            className="cursor-pointer bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-[#f0f2f4] dark:border-gray-800 overflow-hidden flex transition-all hover:bg-gray-50 dark:hover:bg-gray-800">
-                                            <div className="w-24 bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${est.img})` }}></div>
-                                            <div className="flex-1 p-3 flex flex-col justify-center gap-1">
-                                                <div className="flex justify-between items-center">
-                                                    <h3 className="font-bold text-[#111418] dark:text-white text-sm">{est.customer}</h3>
-                                                    <span className="text-xs text-gray-500">{est.date}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <p className="text-xs text-gray-500">{est.vehicle}</p>
-                                                    <StatusBadge status={est.status} />
-                                                </div>
-                                                <div className="mt-1">
-                                                    <span className="text-sm font-bold text-primary">${Number(est.amount).toFixed(2)}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </main>
-                </Layout>
-            );
-        };
-
-        const CustomersScreen = () => {
-            const navigate = useNavigate();
-            const [customers, setCustomers] = useState([]);
-
-            useEffect(() => {
-                const estimates = Store.getEstimates();
-                // Deduplicate customers by name for this view
-                const uniqueCustomers = [];
-                const map = new Map();
-                for (const item of estimates) {
-                    if (!map.has(item.customer)) {
-                        map.set(item.customer, true);
-                        uniqueCustomers.push(item);
-                    }
-                }
-                setCustomers(uniqueCustomers);
-            }, []);
-
-            return (
-                <Layout>
-                    <main className="flex justify-center py-6 px-4 pb-28">
-                        <div className="w-full max-w-[600px] flex flex-col gap-6">
-                            <div className="flex flex-col gap-1">
-                                <h2 className="text-2xl font-bold tracking-tight">My Customers</h2>
-                                <p className="text-[#617589] text-sm">Contact list and vehicle details.</p>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {customers.map((cust, idx) => (
-                                    <div key={idx} className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col items-center text-center gap-3 hover:shadow-md transition-shadow">
-                                        <div className="size-16 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                                            <img src={`https://ui-avatars.com/api/?name=${cust.customer.replace(' ', '+')}&background=random`} alt={cust.customer} className="w-full h-full object-cover" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-lg">{cust.customer}</h3>
-                                            <p className="text-sm text-gray-500">{cust.phone}</p>
-                                        </div>
-                                        <div className="w-full pt-3 border-t border-gray-50 dark:border-gray-800 mt-1">
-                                            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 bg-gray-50 dark:bg-gray-800/50 py-2 rounded-lg">
-                                                <span className="material-symbols-outlined text-sm">directions_car</span>
-                                                {cust.vehicle}
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => navigate(`/history?customer=${encodeURIComponent(cust.customer)}`)}
-                                            className="w-full py-2 text-primary text-sm font-bold hover:bg-primary/5 rounded-lg transition-colors cursor-pointer">
-                                            View History
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </main>
-                </Layout>
-            );
-        };
-
         const ProfileScreen = () => {
             const navigate = useNavigate();
+            const user = Store.getCurrentUser();
             return (
                 <Layout>
                     <main className="flex justify-center py-10 px-4 pb-28">
                         <div className="w-full max-w-[500px] flex flex-col gap-6">
                             <div className="bg-white dark:bg-gray-900 rounded-xl p-8 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col items-center">
                                 <div className="relative mb-4">
-                                    <div className="size-24 rounded-full bg-cover bg-center border-4 border-gray-50 dark:border-gray-800" style={{ backgroundImage: 'url("https://ui-avatars.com/api/?name=Mechanic&background=0D8ABC&color=fff")' }}></div>
-                                    <button className="absolute bottom-0 right-0 bg-primary text-white rounded-full p-1.5 shadow-md hover:bg-blue-600 transition-colors">
-                                        <span className="material-symbols-outlined text-sm">edit</span>
-                                    </button>
+                                    {user && user.avatar ? (
+                                        <div className="size-24 rounded-full border-4 border-blue-600 overflow-hidden shadow-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-800 dark:to-gray-900">
+                                            <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover scale-[1.8] relative top-3" />
+                                        </div>
+                                    ) : (
+                                        <div className="size-24 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 border-4 border-white/20 flex items-center justify-center shadow-xl">
+                                            <span className="text-white text-4xl font-black">{user ? user.name.charAt(0) : 'C'}</span>
+                                        </div>
+                                    )}
                                 </div>
-                                <h1 className="text-2xl font-bold">John Mechanic</h1>
-                                <p className="text-gray-500">Shop Owner • Precision Auto Repair</p>
+                                <h1 className="text-2xl font-black dark:text-white">{user ? user.name : 'Customer'}</h1>
+                                <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">Valued Client</p>
 
                                 <div className="flex gap-4 w-full mt-6 border-t border-gray-100 dark:border-gray-800 pt-6">
                                     <div className="flex-1 text-center">
-                                        <span className="block text-xl font-bold text-primary">124</span>
-                                        <span className="text-xs text-gray-500 uppercase tracking-wide">Jobs Done</span>
-                                    </div>
-                                    <div className="flex-1 text-center border-l border-gray-100 dark:border-gray-800">
-                                        <span className="block text-xl font-bold text-primary">4.9</span>
-                                        <span className="text-xs text-gray-500 uppercase tracking-wide">Rating</span>
+                                        <span className="block text-xl font-bold text-primary">Active</span>
+                                        <span className="text-xs text-gray-500 uppercase tracking-wide">Status</span>
                                     </div>
                                 </div>
                             </div>
@@ -1272,75 +1160,160 @@
                                 <div className="p-6 flex flex-col gap-4">
                                     <div className="flex flex-col gap-2">
                                         <label className="text-sm font-semibold">Full Name</label>
-                                        <input className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-10 px-3" defaultValue="John Mechanic" type="text" />
+                                        <input className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-10 px-3" value={user ? user.name : ''} readOnly type="text" />
                                     </div>
                                     <div className="flex flex-col gap-2">
                                         <label className="text-sm font-semibold">Email</label>
-                                        <input className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-10 px-3" defaultValue="mechanic@example.com" type="email" />
+                                        <input className="form-input rounded-lg dark:bg-gray-800 border-gray-300 dark:border-gray-700 h-10 px-3" value={user ? user.email : ''} readOnly type="email" />
                                     </div>
-                                    <div className="pt-2">
-                                        <button className="text-primary text-sm font-bold hover:underline">Change Password</button>
+                                    <div className="pt-2 text-xs text-gray-400 font-medium">
+                                        * To change account details, please contact shop support.
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </main>
                 </Layout>
-            )
-        }
+            );
+        };
 
         const NotificationsScreen = () => {
-            const [notifications, setNotifications] = useState([
-                { id: 1, title: 'New Request', message: 'Sarah Smith requested an estimate for Engine Diagnostic', time: '2 mins ago', read: false },
-                { id: 2, title: 'Invoice Paid', message: 'Invoice #EST-9012 was paid by John Doe', time: '1 hour ago', read: false },
-                { id: 3, title: 'System Update', message: 'MechFlow has been updated to version 2.0', time: '1 day ago', read: true },
-            ]);
+            const [notifications, setNotifications] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const user = Store.getCurrentUser();
+            const navigate = useNavigate();
 
-            const markRead = (id) => {
-                setNotifications(notifications.map(n => n.id === id ? Object.assign({}, n, { read: true }) : n));
-            }
+            useEffect(() => {
+                const fetch = () => {
+                    if (user) {
+                        setNotifications(Store.getNotifications('customer', user.email));
+                    }
+                    setLoading(false);
+                };
+                fetch();
+                const unsubscribe = Store.subscribe(() => fetch());
+                return () => unsubscribe();
+            }, [user && user.email]);
+
+            const markAllRead = () => {
+                notifications.forEach(n => {
+                    if (!n.read) Store.markNotificationAsRead(n.id);
+                });
+            };
 
             return (
                 <Layout>
                     <main className="flex justify-center py-6 px-4 pb-28">
                         <div className="w-full max-w-[600px] flex flex-col gap-6">
                             <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-bold tracking-tight">Notifications</h2>
-                                <button className="text-primary text-sm font-bold" onClick={() => setNotifications(notifications.map(n => Object.assign({}, n, { read: true })))}>Mark all read</button>
+                                <h2 className="text-2xl font-bold tracking-tight dark:text-white">Recent Alerts</h2>
+                                {notifications.some(n => !n.read) && (
+                                    <button onClick={markAllRead} className="text-blue-600 text-sm font-bold hover:underline">Mark all read</button>
+                                )}
                             </div>
 
                             <div className="flex flex-col gap-3">
-                                {notifications.map(notif => (
-                                    <div key={notif.id} onClick={() => markRead(notif.id)} className={`bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex items-start gap-3 cursor-pointer transition-colors ${!notif.read ? 'border-l-4 border-l-primary bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
-                                        <div className={`mt-1 p-2 rounded-full ${!notif.read ? 'bg-primary/20 text-primary' : 'bg-gray-100 text-gray-500'}`}>
-                                            <span className="material-symbols-outlined text-sm">notifications</span>
+                                {loading ? (
+                                    <div className="text-center py-20 text-gray-400">Syncing...</div>
+                                ) : notifications.length === 0 ? (
+                                    <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-[2rem] border border-gray-100 dark:border-gray-800">
+                                        <div className="size-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <span className="material-symbols-outlined text-gray-400">notifications_off</span>
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="flex justify-between items-start">
-                                                <h3 className={`text-sm ${!notif.read ? 'font-bold' : 'font-semibold'}`}>{notif.title}</h3>
-                                                <span className="text-xs text-gray-400">{notif.time}</span>
-                                            </div>
-                                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{notif.message}</p>
-                                        </div>
+                                        <p className="text-gray-500 font-medium">No alerts yet.</p>
                                     </div>
-                                ))}
+                                ) : (
+                                    notifications.map(notif => (
+                                        <div
+                                            key={notif.id}
+                                            onClick={() => {
+                                                Store.markNotificationAsRead(notif.id);
+                                                if (notif.data && notif.data.id) navigate(`/status/${notif.data.id}`);
+                                            }}
+                                            className={`group bg-white dark:bg-gray-900 p-5 rounded-[1.5rem] border border-gray-100 dark:border-gray-800 shadow-sm flex items-start gap-4 cursor-pointer transition-all hover:scale-[1.01] ${!notif.read ? 'ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-900/5' : 'opacity-80'}`}
+                                        >
+                                            <div className={`mt-1 size-10 rounded-full flex items-center justify-center shrink-0 ${!notif.read ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400 dark:bg-gray-800'}`}>
+                                                <span className="material-symbols-outlined text-lg">{notif.type === 'status_update' ? 'sync_alt' : 'notifications'}</span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-start">
+                                                    <h3 className={`text-base truncate dark:text-white ${!notif.read ? 'font-black' : 'font-bold'}`}>{notif.title}</h3>
+                                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{notif.time}</span>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">{notif.message}</p>
+                                            </div>
+                                            {!notif.read && <div className="size-2 bg-blue-600 rounded-full mt-2"></div>}
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </main>
                 </Layout>
-            )
-        }
+            );
+        };
+
+        const OnboardingScreen = () => {
+            const navigate = useNavigate();
+            const user = Store.getCurrentUser();
+
+            useEffect(() => {
+                if (!user) navigate('/login');
+                if (user && user.avatar) navigate('/customer-dashboard');
+            }, [user && user.email]);
+
+            const selectGender = (gender) => {
+                Store.assignAvatar(gender);
+                navigate('/customer-dashboard');
+            };
+
+            return (
+                <div className="min-h-screen bg-[#f8f9fb] dark:bg-black flex flex-col items-center justify-center p-6 text-center">
+                    <div className="max-w-md w-full animate-[zoomIn_0.4s_ease-out]">
+                        <div className="size-20 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-xl shadow-blue-500/20">
+                            <span className="material-symbols-outlined text-white text-4xl">face</span>
+                        </div>
+                        <h1 className="text-4xl font-black mb-4 tracking-tight dark:text-white">Choose Your Avatar</h1>
+                        <p className="text-[#617589] mb-12 font-medium">Select your orientation to personalize your account experience with a 3D character.</p>
+
+                        <div className="grid grid-cols-2 gap-8">
+                            <button
+                                onClick={() => selectGender('male')}
+                                className="group flex flex-col items-center gap-4 p-8 bg-white dark:bg-gray-900 rounded-[2.5rem] border-2 border-transparent hover:border-blue-500 shadow-xl transition-all hover:scale-105 active:scale-95"
+                            >
+                                <div className="size-24 bg-blue-50 dark:bg-blue-900/20 rounded-[1.5rem] flex items-center justify-center group-hover:bg-blue-500 transition-colors overflow-hidden">
+                                    <img src="assets/emojis/male/011.png" className="w-full h-full object-cover scale-150 relative top-2 group-hover:scale-[1.7] transition-transform" />
+                                </div>
+                                <span className="font-black text-xl dark:text-white">Male</span>
+                            </button>
+
+                            <button
+                                onClick={() => selectGender('female')}
+                                className="group flex flex-col items-center gap-4 p-8 bg-white dark:bg-gray-900 rounded-[2.5rem] border-2 border-transparent hover:border-pink-500 shadow-xl transition-all hover:scale-105 active:scale-95"
+                            >
+                                <div className="size-24 bg-pink-50 dark:bg-pink-900/20 rounded-[1.5rem] flex items-center justify-center group-hover:bg-pink-500 transition-colors overflow-hidden">
+                                    <img src="assets/emojis/female/011.png" className="w-full h-full object-cover scale-150 relative top-2 group-hover:scale-[1.7] transition-transform" />
+                                </div>
+                                <span className="font-black text-xl dark:text-white">Female</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
 
         const App = () => {
             return (
                 <MemoryRouter>
                     <Routes>
                         <Route path="/" element={<LoginScreen />} />
-                        <Route path="/register" element={<RegisterScreen />} />
+                        <Route path="/onboarding" element={<OnboardingScreen />} />
                         <Route path="/customer-dashboard" element={<CustomerDashboardScreen />} />
                         <Route path="/request" element={<CustomerRequestScreen />} />
                         <Route path="/status/:id" element={<CustomerStatusScreen />} />
                         <Route path="/offline-error" element={<OfflineErrorScreen />} />
+                        <Route path="/track" element={<TrackScreen />} />
+                        <Route path="/notifications" element={<NotificationsScreen />} />
                         <Route path="/login" element={<LoginScreen />} />
                     </Routes>
                 </MemoryRouter>
