@@ -12,10 +12,6 @@
         {
             "source": "/offline",
             "destination": "/offline.html"
-        },
-        {
-            "source": "/",
-            "destination": "/landing.html"
         }
     ],
     "headers": [
