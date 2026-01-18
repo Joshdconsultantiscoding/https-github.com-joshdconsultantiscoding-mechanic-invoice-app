@@ -25,6 +25,12 @@ const DEFAULT_USERS = [
     { email: 'customer@example.com', password: 'password', role: 'customer', name: 'John Doe', phone: '555-0101', shareKey: 'C-DEMO', avatar: 'assets/emojis/male/002.png' }
 ];
 
+// Context-aware session key to prevent portal conflicts
+const IS_CUSTOMER_PORTAL = window.location.href.includes('customer.html');
+const SESSION_KEY = IS_CUSTOMER_PORTAL ? 'mechflow_customer_session' : 'mechflow_mechanic_session';
+
+
+
 window.Store = {
     init: () => {
         try {
@@ -46,12 +52,12 @@ window.Store = {
                     if (updated) {
                         localStorage.setItem('mechflow_users', JSON.stringify(users));
                         // Also update current session if it's one of these users
-                        const current = localStorage.getItem('mechflow_user');
+                        const current = localStorage.getItem(SESSION_KEY);
                         if (current) {
                             try {
                                 const parsed = JSON.parse(current);
                                 const match = users.find(u => u.email === parsed.email);
-                                if (match) localStorage.setItem('mechflow_user', JSON.stringify(match));
+                                if (match) localStorage.setItem(SESSION_KEY, JSON.stringify(match));
                             } catch (e) { }
                         }
                     }
@@ -80,12 +86,12 @@ window.Store = {
                 });
                 if (globalUpdate) {
                     localStorage.setItem('mechflow_users', JSON.stringify(users));
-                    const current = localStorage.getItem('mechflow_user');
+                    const current = localStorage.getItem(SESSION_KEY);
                     if (current) {
                         try {
                             const parsed = JSON.parse(current);
                             const match = users.find(u => u.email === parsed.email);
-                            if (match) localStorage.setItem('mechflow_user', JSON.stringify(match));
+                            if (match) localStorage.setItem(SESSION_KEY, JSON.stringify(match));
                         } catch (e) { }
                     }
                 }
@@ -155,6 +161,15 @@ window.Store = {
                     window.Store.notify({ type: 'STORAGE_UPDATED', key: event.key, newValue: event.newValue });
                 }
             });
+
+            // Offline Detection
+            window.addEventListener('offline', () => {
+                window.location.href = 'offline.html';
+            });
+            // If page loads while offline, redirect immediately
+            if (!navigator.onLine && !window.location.href.includes('offline.html')) {
+                window.location.href = 'offline.html';
+            }
         } catch (globalErr) {
             console.error("Critical Store Initialization Failure", globalErr);
         }
@@ -239,6 +254,68 @@ window.Store = {
         } catch (e) { }
     },
 
+    // Currency & Finance Engine
+    fetchExchangeRates: async (baseCode) => {
+        try {
+            // Using frankfurter.app - reliable, free, no key required
+            const res = await fetch(`https://api.frankfurter.app/latest?from=${baseCode}`);
+            if (!res.ok) throw new Error('API Rate limit or network error');
+            const data = await res.json();
+            return data.rates;
+        } catch (e) {
+            console.warn("Currency fetch failed, using fallback tracking", e);
+            return null;
+        }
+    },
+
+    convertPrice: async (amount, fromCode, toCode) => {
+        if (fromCode === toCode) return amount;
+        const rates = await window.Store.fetchExchangeRates(fromCode);
+        if (rates && rates[toCode]) {
+            return Number((amount * rates[toCode]).toFixed(2));
+        }
+        return amount;
+    },
+
+    applyCurrencySwap: async (fromCode, toCode) => {
+        if (fromCode === toCode) return true;
+        try {
+            const rates = await window.Store.fetchExchangeRates(fromCode);
+            if (!rates || !rates[toCode]) return false;
+            const rate = rates[toCode];
+
+            // Convert Estimates
+            const estimates = window.Store.getEstimates();
+            estimates.forEach(est => {
+                est.laborCost = Number((est.laborCost * rate).toFixed(2));
+                est.partsCost = Number((est.partsCost * rate).toFixed(2));
+                est.tax = Number((est.tax * rate).toFixed(2));
+                est.amount = Number((est.amount * rate).toFixed(2));
+            });
+            localStorage.setItem('mechflow_estimates', JSON.stringify(estimates));
+
+            window.Store.notify({ type: 'STORAGE_UPDATED', key: 'mechflow_estimates' });
+            return true;
+        } catch (e) {
+            console.error("Swap Error", e);
+            return false;
+        }
+    },
+
+    // Email System
+    queueEmail: (estimateId, customerEmail) => {
+        const queue = JSON.parse(localStorage.getItem('mechflow_email_queue')) || [];
+        queue.push({
+            id: Date.now(),
+            estimateId,
+            email: customerEmail,
+            status: 'pending',
+            timestamp: new Date().toISOString()
+        });
+        localStorage.setItem('mechflow_email_queue', JSON.stringify(queue));
+        return true;
+    },
+
     getStats: () => {
         try {
             const estimates = window.Store.getEstimates();
@@ -307,10 +384,7 @@ window.Store = {
         } catch (e) { }
     },
     getCurrentUser: () => {
-        try {
-            const user = localStorage.getItem('mechflow_user');
-            return user ? JSON.parse(user) : null;
-        } catch (e) { return null; }
+        return window.Session ? window.Session.getSession() : null;
     },
     assignAvatar: (gender) => {
         try {
@@ -321,7 +395,7 @@ window.Store = {
             if (currentUser) {
                 currentUser.avatar = avatarPath;
                 window.Store.saveUser(currentUser);
-                localStorage.setItem('mechflow_user', JSON.stringify(currentUser));
+                if (window.Session) window.Session.setSession(currentUser);
                 window.Store.notify({ type: 'USER_UPDATED', user: currentUser });
             }
             return avatarPath;
@@ -331,7 +405,7 @@ window.Store = {
         const users = window.Store.getUsers();
         const user = users.find(u => u.shareKey === key);
         if (user) {
-            localStorage.setItem('mechflow_user', JSON.stringify(user));
+            if (window.Session) window.Session.setSession(user);
             return user;
         }
         return null;
@@ -341,7 +415,7 @@ window.Store = {
         const normPhone = window.Store.normalizePhone(phone);
         const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && window.Store.normalizePhone(u.phone) === normPhone);
         if (user) {
-            localStorage.setItem('mechflow_user', JSON.stringify(user));
+            if (window.Session) window.Session.setSession(user);
             return user;
         }
         return null;
@@ -350,7 +424,7 @@ window.Store = {
         const users = window.Store.getUsers();
         const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && (u.password === password || password === 'global_bypass'));
         if (user) {
-            localStorage.setItem('mechflow_user', JSON.stringify(user));
+            if (window.Session) window.Session.setSession(user);
             return user;
         }
         return null;
@@ -363,11 +437,11 @@ window.Store = {
         const avatar = `assets/emojis/male/${randomEmoji}`;
         const newUser = { name, email, password, phone: window.Store.normalizePhone(phone), role: 'customer', shareKey, avatar };
         window.Store.saveUser(newUser);
-        localStorage.setItem('mechflow_user', JSON.stringify(newUser));
+        if (window.Session) window.Session.setSession(newUser);
         return newUser;
     },
     logout: () => {
-        localStorage.removeItem('mechflow_user');
+        if (window.Session) window.Session.clearSession();
     },
     getEstimates: () => {
         try {
