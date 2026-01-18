@@ -1,0 +1,32 @@
+{
+    "version": 2,
+    "rewrites": [
+        {
+            "source": "/mechanic",
+            "destination": "/standalone.html"
+        },
+        {
+            "source": "/customer",
+            "destination": "/customer.html"
+        },
+        {
+            "source": "/offline",
+            "destination": "/offline.html"
+        },
+        {
+            "source": "/",
+            "destination": "/landing.html"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=0, must-revalidate"
+                }
+            ]
+        }
+    ]
+}
